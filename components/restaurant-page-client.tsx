@@ -64,7 +64,7 @@ function MenuItemRow({
         {value !== null ? (
           <div>
             <span className="font-bold text-gray-900 dark:text-gray-100 tabular-nums">{value}</span>
-            <span className="text-xs text-gray-400 ml-0.5">{unit}</span>
+            <span className="text-xs text-gray-400 ml-1">{unit}</span>
           </div>
         ) : (
           <span className="text-xs text-gray-300 dark:text-gray-600">—</span>
@@ -133,6 +133,7 @@ export function RestaurantPageClient({
       <NutritionSheet
         item={selectedItem}
         restaurantTier={restaurant.tier}
+        selectedNutrient={nutrient}
         open={selectedItem !== null}
         onClose={() => setSelectedItem(null)}
       />

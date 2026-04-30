@@ -10,11 +10,13 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { TierBadge } from "@/components/tier-badge";
 import type { MenuItem, RestaurantTier } from "@/lib/types";
+import type { NutrientKey } from "@/components/nutrient-selector";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
 interface NutritionSheetProps {
   item: MenuItem | null;
   restaurantTier: RestaurantTier;
+  selectedNutrient: NutrientKey;
   open: boolean;
   onClose: () => void;
 }
@@ -61,9 +63,17 @@ function NutritionRow({
   );
 }
 
+const HERO_CONFIG: Record<NutrientKey, { label: string; unit: string; color: string }> = {
+  calories: { label: "Calories", unit: "kcal", color: "text-gray-900 dark:text-gray-100" },
+  protein:  { label: "Protein",  unit: "g",    color: "text-blue-500" },
+  carbs:    { label: "Carbs",    unit: "g",    color: "text-orange-500" },
+  fat:      { label: "Fat",      unit: "g",    color: "text-amber-500" },
+};
+
 export function NutritionSheet({
   item,
   restaurantTier,
+  selectedNutrient,
   open,
   onClose,
 }: NutritionSheetProps) {
@@ -71,10 +81,14 @@ export function NutritionSheet({
 
   if (!item) return null;
 
-  const cal = item.base_calories ?? 0;
-  const protein = item.base_protein_g ?? 0;
-  const carbs = item.base_carbs_g ?? 0;
-  const fat = item.base_fat_g ?? 0;
+  const cal     = item.base_calories ?? 0;
+  const protein = Number(item.base_protein_g ?? 0);
+  const carbs   = Number(item.base_carbs_g ?? 0);
+  const fat     = Number(item.base_fat_g ?? 0);
+
+  const heroValues: Record<NutrientKey, number> = { calories: cal, protein, carbs, fat };
+  const hero = HERO_CONFIG[selectedNutrient];
+  const heroValue = heroValues[selectedNutrient];
 
   const hasTier2Nutrients =
     item.base_fibre_g !== null ||
@@ -103,13 +117,13 @@ export function NutritionSheet({
         </SheetHeader>
 
         <div className="px-5 mt-4 space-y-5">
-          {/* Calories — hero */}
+          {/* Hero nutrient */}
           <div className="text-center py-5 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/40 rounded-2xl">
-            <div className="text-6xl font-bold tabular-nums tracking-tight text-gray-900 dark:text-gray-100">
-              {cal}
+            <div className={`text-6xl font-bold tabular-nums tracking-tight ${hero.color}`}>
+              {heroValue}
             </div>
-            <div className="text-sm text-gray-400 dark:text-gray-500 mt-1 font-medium uppercase tracking-wide text-xs">
-              calories
+            <div className="text-xs text-gray-400 dark:text-gray-500 mt-1 font-medium uppercase tracking-wide">
+              {hero.label} · {hero.unit}
             </div>
           </div>
 
