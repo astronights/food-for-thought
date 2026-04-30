@@ -63,12 +63,12 @@ function NutritionRow({
   );
 }
 
-const HERO_CONFIG: Record<NutrientKey, { label: string; unit: string; color: string }> = {
-  calories: { label: "Calories", unit: "kcal", color: "text-gray-900 dark:text-gray-100" },
-  protein:  { label: "Protein",  unit: "g",    color: "text-blue-500" },
-  carbs:    { label: "Carbs",    unit: "g",    color: "text-orange-500" },
-  fat:      { label: "Fat",      unit: "g",    color: "text-amber-500" },
-};
+const NUTRIENT_CONFIG: { key: NutrientKey; label: string; unit: string; color: string }[] = [
+  { key: "calories", label: "Calories", unit: "kcal", color: "text-gray-900 dark:text-gray-100" },
+  { key: "protein",  label: "Protein",  unit: "g",    color: "text-blue-500" },
+  { key: "carbs",    label: "Carbs",    unit: "g",    color: "text-orange-500" },
+  { key: "fat",      label: "Fat",      unit: "g",    color: "text-amber-500" },
+];
 
 export function NutritionSheet({
   item,
@@ -86,9 +86,10 @@ export function NutritionSheet({
   const carbs   = Number(item.base_carbs_g ?? 0);
   const fat     = Number(item.base_fat_g ?? 0);
 
-  const heroValues: Record<NutrientKey, number> = { calories: cal, protein, carbs, fat };
-  const hero = HERO_CONFIG[selectedNutrient];
-  const heroValue = heroValues[selectedNutrient];
+  const nutrientValues: Record<NutrientKey, number> = { calories: cal, protein, carbs, fat };
+  const hero = NUTRIENT_CONFIG.find((n) => n.key === selectedNutrient)!;
+  const heroValue = nutrientValues[selectedNutrient];
+  const secondaryNutrients = NUTRIENT_CONFIG.filter((n) => n.key !== selectedNutrient);
 
   const hasTier2Nutrients =
     item.base_fibre_g !== null ||
@@ -127,13 +128,20 @@ export function NutritionSheet({
             </div>
           </div>
 
-          {/* Macros — big numbers side by side */}
+          {/* Secondary nutrients — the 3 that aren't the hero */}
           <div className="flex gap-2 py-1">
-            <MacroStat label="Protein" value={Number(protein)} unit="g" color="text-blue-500" />
-            <div className="w-px bg-gray-100 dark:bg-gray-800" />
-            <MacroStat label="Carbs" value={Number(carbs)} unit="g" color="text-orange-500" />
-            <div className="w-px bg-gray-100 dark:bg-gray-800" />
-            <MacroStat label="Fat" value={Number(fat)} unit="g" color="text-amber-500" />
+            {secondaryNutrients.map((n, i) => (
+              <>
+                {i > 0 && <div key={`sep-${n.key}`} className="w-px bg-gray-100 dark:bg-gray-800" />}
+                <MacroStat
+                  key={n.key}
+                  label={n.label}
+                  value={nutrientValues[n.key]}
+                  unit={n.unit}
+                  color={n.color}
+                />
+              </>
+            ))}
           </div>
 
           {/* Tier 2 nutrients — expandable */}
