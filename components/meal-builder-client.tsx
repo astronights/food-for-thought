@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, ChevronDown, ChevronUp } from "lucide-react";
 import { TierBadge } from "@/components/tier-badge";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { NutrientSelector, type NutrientKey } from "@/components/nutrient-selector";
 import { calculateNutrition } from "@/lib/nutrition";
 import type { CustomisationOption, MenuItem, Restaurant } from "@/lib/types";
 import type { GroupWithOptions } from "@/app/restaurants/[slug]/build/[itemId]/page";
@@ -33,10 +34,20 @@ function isGroupComplete(group: GroupWithOptions, selections: Selections): boole
   return !!sel && sel !== "";
 }
 
+function getOptionDelta(option: CustomisationOption, nutrient: NutrientKey): { delta: number; unit: string } {
+  switch (nutrient) {
+    case "calories": return { delta: option.calories_delta ?? 0,          unit: "kcal" };
+    case "protein":  return { delta: Number(option.protein_delta_g ?? 0), unit: "g" };
+    case "carbs":    return { delta: Number(option.carbs_delta_g ?? 0),   unit: "g" };
+    case "fat":      return { delta: Number(option.fat_delta_g ?? 0),     unit: "g" };
+  }
+}
+
 export function MealBuilderClient({ restaurant, item, groups }: MealBuilderClientProps) {
   const [selections, setSelections] = useState<Selections>({});
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [attempted, setAttempted] = useState(false);
+  const [nutrient, setNutrient] = useState<NutrientKey>("calories");
 
   const selectedOptions = useMemo(
     () => getSelectedOptions(groups, selections),
@@ -84,7 +95,10 @@ export function MealBuilderClient({ restaurant, item, groups }: MealBuilderClien
             </div>
             <p className="text-xs text-emerald-100 truncate">{restaurant.name}</p>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <NutrientSelector value={nutrient} onChange={setNutrient} />
+            <ThemeToggle />
+          </div>
         </div>
       </div>
 
@@ -191,13 +205,16 @@ export function MealBuilderClient({ restaurant, item, groups }: MealBuilderClien
                         {option.name}
                       </span>
 
-                      {/* Calorie delta */}
-                      {option.calories_delta !== 0 && (
-                        <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums flex-shrink-0">
-                          {option.calories_delta > 0 ? "+" : ""}
-                          {option.calories_delta} kcal
-                        </span>
-                      )}
+                      {/* Nutrient delta */}
+                      {(() => {
+                        const { delta, unit } = getOptionDelta(option, nutrient);
+                        if (delta === 0) return null;
+                        return (
+                          <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums flex-shrink-0">
+                            {delta > 0 ? "+" : ""}{delta} {unit}
+                          </span>
+                        );
+                      })()}
                     </button>
                   );
                 })}
