@@ -1,6 +1,5 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
 import type { RestaurantTier } from "@/lib/types";
 
 interface TierBadgeProps {
@@ -11,24 +10,33 @@ interface TierBadgeProps {
 export function TierBadge({ tier, submissionCount }: TierBadgeProps) {
   if (tier === 1) {
     return (
-      <Badge variant="outline" className="text-emerald-700 border-emerald-200 bg-emerald-50 text-xs font-medium">
-        ✅ Verified
-      </Badge>
+      <span
+        title="Verified nutrition data"
+        className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 text-xs flex-shrink-0"
+      >
+        ✓
+      </span>
     );
   }
   if (tier === 2) {
     const label = submissionCount
-      ? `🔶 Community · ${submissionCount} submission${submissionCount === 1 ? "" : "s"}`
-      : "🔶 Community estimate";
+      ? `Community estimate · ${submissionCount} submission${submissionCount === 1 ? "" : "s"}`
+      : "Community estimate";
     return (
-      <Badge variant="outline" className="text-amber-700 border-amber-200 bg-amber-50 text-xs font-medium">
-        {label}
-      </Badge>
+      <span
+        title={label}
+        className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 text-xs flex-shrink-0"
+      >
+        ~
+      </span>
     );
   }
   return (
-    <Badge variant="outline" className="text-gray-500 border-gray-200 bg-gray-50 text-xs font-medium">
-      No data yet
-    </Badge>
+    <span
+      title="No nutrition data yet"
+      className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-400 text-xs flex-shrink-0"
+    >
+      ?
+    </span>
   );
 }

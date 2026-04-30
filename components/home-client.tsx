@@ -44,8 +44,8 @@ export function HomeClient({ restaurants }: HomeClientProps) {
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search restaurants, dishes, or areas…"
-          className="pl-9 bg-white border-gray-200 rounded-xl h-11"
+          placeholder="Search restaurants or dishes…"
+          className="pl-9 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 rounded-xl h-11 text-gray-900 dark:text-gray-100 placeholder:text-gray-400"
         />
       </div>
 
@@ -57,8 +57,8 @@ export function HomeClient({ restaurants }: HomeClientProps) {
             onClick={() => setActiveFilter(f)}
             className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
               activeFilter === f
-                ? "bg-gray-900 text-white"
-                : "bg-white text-gray-600 border border-gray-200 hover:border-gray-300"
+                ? "bg-emerald-600 text-white"
+                : "bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-800 hover:border-emerald-300 dark:hover:border-emerald-700"
             }`}
           >
             {f}
@@ -72,7 +72,7 @@ export function HomeClient({ restaurants }: HomeClientProps) {
           <p className="text-sm">No restaurants found.</p>
           {query && (
             <button
-              className="mt-2 text-sm text-gray-500 underline"
+              className="mt-2 text-sm text-emerald-600 underline"
               onClick={() => setQuery("")}
             >
               Clear search
