@@ -47,7 +47,7 @@ function MenuItemRow({
       onClick={onClick}
       className="w-full flex items-center justify-between py-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50 active:bg-gray-100 dark:active:bg-gray-800 transition-colors -mx-4 px-4"
     >
-      <div className="flex-1 min-w-0 pr-4">
+      <div className="flex-1 min-w-0 pr-2">
         <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{item.name}</p>
         {item.description && (
           <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5 line-clamp-1">
