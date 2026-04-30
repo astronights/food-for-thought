@@ -80,14 +80,9 @@ export function HomeClient({ restaurants }: HomeClientProps) {
           )}
         </div>
       ) : (
-        <div className="flex flex-col">
-          {filtered.map((r, i) => (
-            <div key={r.id}>
-              <RestaurantCard restaurant={r} />
-              {i < filtered.length - 1 && (
-                <div className="h-px bg-gray-200 dark:bg-gray-800 my-3 mx-1" />
-              )}
-            </div>
+        <div className="space-y-4">
+          {filtered.map((r) => (
+            <RestaurantCard key={r.id} restaurant={r} />
           ))}
         </div>
       )}
