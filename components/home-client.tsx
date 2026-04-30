@@ -3,8 +3,9 @@
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { RestaurantCard } from "@/components/restaurant-card";
+import { ContributeRestaurantSheet } from "@/components/contribute-restaurant-sheet";
 import type { Restaurant } from "@/lib/types";
-import { Search } from "lucide-react";
+import { Search, PlusCircle } from "lucide-react";
 
 const FILTERS = ["All", "Salads", "Bowls", "Wraps", "Sandwiches"] as const;
 type Filter = (typeof FILTERS)[number];
@@ -16,6 +17,7 @@ interface HomeClientProps {
 export function HomeClient({ restaurants }: HomeClientProps) {
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<Filter>("All");
+  const [showRestaurantSheet, setShowRestaurantSheet] = useState(false);
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase().trim();
@@ -86,6 +88,20 @@ export function HomeClient({ restaurants }: HomeClientProps) {
           ))}
         </div>
       )}
+
+      {/* Suggest a restaurant */}
+      <button
+        onClick={() => setShowRestaurantSheet(true)}
+        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-gray-200 dark:border-gray-800 text-gray-400 dark:text-gray-500 text-sm hover:border-emerald-300 hover:text-emerald-600 dark:hover:border-emerald-800 dark:hover:text-emerald-400 transition-colors mt-2"
+      >
+        <PlusCircle className="h-4 w-4" />
+        Suggest a restaurant
+      </button>
+
+      <ContributeRestaurantSheet
+        open={showRestaurantSheet}
+        onClose={() => setShowRestaurantSheet(false)}
+      />
     </div>
   );
 }

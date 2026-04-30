@@ -6,12 +6,19 @@ import { TierBadge } from "@/components/tier-badge";
 import { NutritionSheet } from "@/components/nutrition-sheet";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NutrientSelector, type NutrientKey } from "@/components/nutrient-selector";
+import { ContributeDishSheet } from "@/components/contribute-dish-sheet";
 import type { MenuItem, Restaurant } from "@/lib/types";
-import { ArrowLeft, ChefHat } from "lucide-react";
+import { ArrowLeft, ChefHat, Camera, PlusCircle, X } from "lucide-react";
 
 interface RestaurantPageClientProps {
   restaurant: Restaurant;
   menu: MenuItem[];
+}
+
+interface ContributeTarget {
+  dishName: string;
+  menuItemId: string | null;
+  isNewDish: boolean;
 }
 
 function groupByCategory(items: MenuItem[]): Record<string, MenuItem[]> {
@@ -31,13 +38,7 @@ function getNutrientValue(item: MenuItem, key: NutrientKey): { value: number | n
   }
 }
 
-function BuildableItemCard({
-  item,
-  restaurantSlug,
-}: {
-  item: MenuItem;
-  restaurantSlug: string;
-}) {
+function BuildableItemCard({ item, restaurantSlug }: { item: MenuItem; restaurantSlug: string }) {
   return (
     <Link href={`/restaurants/${restaurantSlug}/build/${item.id}`}>
       <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 rounded-xl border border-emerald-100 dark:border-emerald-900/40 hover:shadow-sm transition-all active:scale-[0.99]">
@@ -59,19 +60,16 @@ function BuildableItemCard({
 }
 
 function MenuItemRow({
-  item,
-  nutrient,
-  onClick,
+  item, nutrient, isContributing, onClick, onContribute,
 }: {
-  item: MenuItem;
-  nutrient: NutrientKey;
-  onClick: () => void;
+  item: MenuItem; nutrient: NutrientKey; isContributing: boolean;
+  onClick: () => void; onContribute: () => void;
 }) {
   const { value, unit } = getNutrientValue(item, nutrient);
 
   return (
     <button
-      onClick={onClick}
+      onClick={isContributing ? onContribute : onClick}
       className="w-full flex items-center justify-between py-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50 active:bg-gray-100 dark:active:bg-gray-800 transition-colors -mx-4 pl-4 pr-2"
     >
       <div className="flex-1 min-w-0 pr-2">
@@ -80,8 +78,10 @@ function MenuItemRow({
           <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5 line-clamp-1">{item.description}</p>
         )}
       </div>
-      <div className="flex-shrink-0 text-right">
-        {value !== null ? (
+      <div className="flex-shrink-0">
+        {isContributing ? (
+          <Camera className="h-4 w-4 text-emerald-500" />
+        ) : value !== null ? (
           <div>
             <span className="font-bold text-gray-900 dark:text-gray-100 tabular-nums">{value}</span>
             <span className="text-xs text-gray-400 ml-1">{unit}</span>
@@ -97,77 +97,134 @@ function MenuItemRow({
 export function RestaurantPageClient({ restaurant, menu }: RestaurantPageClientProps) {
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [nutrient, setNutrient] = useState<NutrientKey>("calories");
+  const [isContributing, setIsContributing] = useState(false);
+  const [contributeTarget, setContributeTarget] = useState<ContributeTarget | null>(null);
 
+  const canContribute = restaurant.tier !== 1;
   const buildableItems = menu.filter((i) => i.has_customisation);
   const regularItems = menu.filter((i) => !i.has_customisation);
   const grouped = groupByCategory(regularItems);
   const categories = Object.keys(grouped);
 
+  function openContribute(target: ContributeTarget) {
+    setContributeTarget(target);
+  }
+
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Header */}
-      <div className="bg-gradient-to-r from-emerald-600 to-teal-500 sticky top-0 z-10">
+      <div className={`sticky top-0 z-10 ${isContributing ? "bg-gradient-to-r from-amber-500 to-orange-500" : "bg-gradient-to-r from-emerald-600 to-teal-500"}`}>
         <div className="max-w-lg mx-auto px-4 py-4 flex items-center gap-3">
-          <Link href="/" className="text-white/70 hover:text-white transition-colors">
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="font-bold text-white truncate">{restaurant.name}</h1>
-              <TierBadge tier={restaurant.tier} />
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <NutrientSelector value={nutrient} onChange={setNutrient} />
-            <ThemeToggle />
-          </div>
+          {isContributing ? (
+            <>
+              <span className="text-white font-semibold flex-1 truncate text-sm">Contributing to {restaurant.name}</span>
+              <button
+                onClick={() => setIsContributing(false)}
+                className="flex items-center gap-1.5 text-white/90 hover:text-white text-sm font-medium"
+              >
+                <X className="h-4 w-4" /> Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <Link href="/" className="text-white/70 hover:text-white transition-colors">
+                <ArrowLeft className="h-5 w-5" />
+              </Link>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <h1 className="font-bold text-white truncate">{restaurant.name}</h1>
+                  <TierBadge tier={restaurant.tier} />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <NutrientSelector value={nutrient} onChange={setNutrient} />
+                <ThemeToggle />
+              </div>
+            </>
+          )}
         </div>
       </div>
 
       <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
-        {menu.length === 0 ? (
-          <div className="text-center py-20">
+        {menu.length === 0 && !isContributing ? (
+          <div className="text-center py-16">
             <p className="text-gray-400 text-sm">No menu items yet.</p>
+            {canContribute && (
+              <button
+                onClick={() => openContribute({ dishName: "", menuItemId: null, isNewDish: true })}
+                className="mt-3 text-sm text-emerald-600 font-medium"
+              >
+                Be the first to add a dish →
+              </button>
+            )}
           </div>
         ) : (
           <>
-            {/* Buildable items — always first */}
-            {buildableItems.length > 0 && (
+            {/* Buildable items */}
+            {buildableItems.length > 0 && !isContributing && (
               <section>
-                <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3 px-1">
-                  Build Your Meal
-                </h2>
+                <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3 px-1">Build Your Meal</h2>
                 <div className="space-y-3">
                   {buildableItems.map((item) => (
-                    <BuildableItemCard
-                      key={item.id}
-                      item={item}
-                      restaurantSlug={restaurant.slug}
-                    />
+                    <BuildableItemCard key={item.id} item={item} restaurantSlug={restaurant.slug} />
                   ))}
                 </div>
               </section>
             )}
 
-            {/* Regular menu items grouped by category */}
+            {/* Regular menu items */}
             {categories.map((category) => (
               <section key={category}>
-                <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2 px-1">
-                  {category}
-                </h2>
+                <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2 px-1">{category}</h2>
                 <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden px-4">
                   {grouped[category].map((item) => (
                     <MenuItemRow
                       key={item.id}
                       item={item}
                       nutrient={nutrient}
+                      isContributing={isContributing}
                       onClick={() => setSelectedItem(item)}
+                      onContribute={() => openContribute({ dishName: item.name, menuItemId: item.id, isNewDish: false })}
                     />
                   ))}
+                  {/* New dish row in contribute mode */}
+                  {isContributing && (
+                    <button
+                      onClick={() => openContribute({ dishName: "", menuItemId: null, isNewDish: true })}
+                      className="w-full flex items-center gap-2 py-3.5 -mx-4 pl-4 pr-2 text-emerald-600 dark:text-emerald-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                    >
+                      <PlusCircle className="h-4 w-4" />
+                      <span className="text-sm font-medium">Add a new dish</span>
+                    </button>
+                  )}
                 </div>
               </section>
             ))}
+
+            {/* New dish button when no categories yet */}
+            {isContributing && categories.length === 0 && (
+              <button
+                onClick={() => openContribute({ dishName: "", menuItemId: null, isNewDish: true })}
+                className="w-full flex items-center justify-center gap-2 py-4 rounded-xl border-2 border-dashed border-emerald-300 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400"
+              >
+                <PlusCircle className="h-5 w-5" />
+                <span className="text-sm font-medium">Add the first dish</span>
+              </button>
+            )}
           </>
+        )}
+
+        {/* Contribute button — Tier 2/3 only, at the bottom */}
+        {canContribute && !isContributing && menu.length > 0 && (
+          <div className="pt-2">
+            <button
+              onClick={() => setIsContributing(true)}
+              className="w-full py-3 rounded-xl border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 text-sm font-medium flex items-center justify-center gap-2 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors"
+            >
+              <Camera className="h-4 w-4" />
+              Contribute nutrition data
+            </button>
+          </div>
         )}
       </div>
 
@@ -177,6 +234,16 @@ export function RestaurantPageClient({ restaurant, menu }: RestaurantPageClientP
         selectedNutrient={nutrient}
         open={selectedItem !== null}
         onClose={() => setSelectedItem(null)}
+      />
+
+      <ContributeDishSheet
+        open={contributeTarget !== null}
+        onClose={() => setContributeTarget(null)}
+        restaurantId={restaurant.id}
+        restaurantName={restaurant.name}
+        dishName={contributeTarget?.dishName ?? ""}
+        menuItemId={contributeTarget?.menuItemId ?? null}
+        isNewDish={contributeTarget?.isNewDish ?? true}
       />
     </main>
   );
