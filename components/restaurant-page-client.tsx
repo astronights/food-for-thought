@@ -7,7 +7,7 @@ import { NutritionSheet } from "@/components/nutrition-sheet";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NutrientSelector, type NutrientKey } from "@/components/nutrient-selector";
 import type { MenuItem, Restaurant } from "@/lib/types";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ChefHat } from "lucide-react";
 
 interface RestaurantPageClientProps {
   restaurant: Restaurant;
@@ -31,6 +31,33 @@ function getNutrientValue(item: MenuItem, key: NutrientKey): { value: number | n
   }
 }
 
+function BuildableItemCard({
+  item,
+  restaurantSlug,
+}: {
+  item: MenuItem;
+  restaurantSlug: string;
+}) {
+  return (
+    <Link href={`/restaurants/${restaurantSlug}/build/${item.id}`}>
+      <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 rounded-xl border border-emerald-100 dark:border-emerald-900/40 hover:shadow-sm transition-all active:scale-[0.99]">
+        <div className="h-10 w-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center flex-shrink-0">
+          <ChefHat className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-emerald-800 dark:text-emerald-300 truncate">{item.name}</p>
+          {item.description && (
+            <p className="text-xs text-emerald-600/70 dark:text-emerald-500 mt-0.5 line-clamp-1">{item.description}</p>
+          )}
+        </div>
+        <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/60 px-2.5 py-1 rounded-full flex-shrink-0">
+          Build →
+        </span>
+      </div>
+    </Link>
+  );
+}
+
 function MenuItemRow({
   item,
   nutrient,
@@ -50,14 +77,7 @@ function MenuItemRow({
       <div className="flex-1 min-w-0 pr-2">
         <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{item.name}</p>
         {item.description && (
-          <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5 line-clamp-1">
-            {item.description}
-          </p>
-        )}
-        {item.has_customisation && (
-          <p className="text-xs text-emerald-500 dark:text-emerald-400 mt-0.5 font-medium">
-            Customisable
-          </p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5 line-clamp-1">{item.description}</p>
         )}
       </div>
       <div className="flex-shrink-0 text-right">
@@ -74,18 +94,18 @@ function MenuItemRow({
   );
 }
 
-export function RestaurantPageClient({
-  restaurant,
-  menu,
-}: RestaurantPageClientProps) {
+export function RestaurantPageClient({ restaurant, menu }: RestaurantPageClientProps) {
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [nutrient, setNutrient] = useState<NutrientKey>("calories");
-  const grouped = groupByCategory(menu);
+
+  const buildableItems = menu.filter((i) => i.has_customisation);
+  const regularItems = menu.filter((i) => !i.has_customisation);
+  const grouped = groupByCategory(regularItems);
   const categories = Object.keys(grouped);
 
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      {/* Gradient header */}
+      {/* Header */}
       <div className="bg-gradient-to-r from-emerald-600 to-teal-500 sticky top-0 z-10">
         <div className="max-w-lg mx-auto px-4 py-4 flex items-center gap-3">
           <Link href="/" className="text-white/70 hover:text-white transition-colors">
@@ -110,23 +130,44 @@ export function RestaurantPageClient({
             <p className="text-gray-400 text-sm">No menu items yet.</p>
           </div>
         ) : (
-          categories.map((category) => (
-            <section key={category}>
-              <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2 px-1">
-                {category}
-              </h2>
-              <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden px-4">
-                {grouped[category].map((item) => (
-                  <MenuItemRow
-                    key={item.id}
-                    item={item}
-                    nutrient={nutrient}
-                    onClick={() => setSelectedItem(item)}
-                  />
-                ))}
-              </div>
-            </section>
-          ))
+          <>
+            {/* Buildable items — always first */}
+            {buildableItems.length > 0 && (
+              <section>
+                <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3 px-1">
+                  Build Your Meal
+                </h2>
+                <div className="space-y-3">
+                  {buildableItems.map((item) => (
+                    <BuildableItemCard
+                      key={item.id}
+                      item={item}
+                      restaurantSlug={restaurant.slug}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Regular menu items grouped by category */}
+            {categories.map((category) => (
+              <section key={category}>
+                <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2 px-1">
+                  {category}
+                </h2>
+                <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden px-4">
+                  {grouped[category].map((item) => (
+                    <MenuItemRow
+                      key={item.id}
+                      item={item}
+                      nutrient={nutrient}
+                      onClick={() => setSelectedItem(item)}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </>
         )}
       </div>
 
