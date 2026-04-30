@@ -80,7 +80,7 @@ export function HomeClient({ restaurants }: HomeClientProps) {
           )}
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {filtered.map((r) => (
             <RestaurantCard key={r.id} restaurant={r} />
           ))}

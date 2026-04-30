@@ -32,7 +32,7 @@ export default async function HomePage() {
               Food for Thought
             </h1>
             <p className="text-sm text-emerald-100 mt-0.5">
-              Singapore restaurant nutrition
+              Nutrition for Singapore
             </p>
           </div>
           <ThemeToggle />

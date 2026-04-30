@@ -34,7 +34,7 @@ function MacroStat({
     <div className="flex-1 text-center">
       <div className={`text-2xl font-bold tabular-nums ${color}`}>
         {value}
-        <span className="text-base font-semibold">{unit}</span>
+        <span className="text-base font-semibold ml-0.5">{unit}</span>
       </div>
       <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{label}</div>
     </div>
@@ -88,12 +88,12 @@ export function NutritionSheet({
         side="bottom"
         className="max-h-[90vh] overflow-y-auto rounded-t-2xl px-0 pb-10 bg-white dark:bg-gray-900 border-gray-100 dark:border-gray-800"
       >
-        <SheetHeader className="px-5 pb-2">
-          <div className="flex items-start justify-between gap-3">
+        <SheetHeader className="px-5 pb-2 pr-12">
+          <div className="flex items-center gap-2">
+            <TierBadge tier={restaurantTier} />
             <SheetTitle className="text-left text-lg font-semibold leading-tight text-gray-900 dark:text-gray-100">
               {item.name}
             </SheetTitle>
-            <TierBadge tier={restaurantTier} />
           </div>
           {item.description && (
             <p className="text-left text-sm text-gray-400 dark:text-gray-500 mt-1">

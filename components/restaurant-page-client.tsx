@@ -5,6 +5,7 @@ import Link from "next/link";
 import { TierBadge } from "@/components/tier-badge";
 import { NutritionSheet } from "@/components/nutrition-sheet";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { NutrientSelector, type NutrientKey } from "@/components/nutrient-selector";
 import type { MenuItem, Restaurant } from "@/lib/types";
 import { ArrowLeft } from "lucide-react";
 
@@ -21,14 +22,25 @@ function groupByCategory(items: MenuItem[]): Record<string, MenuItem[]> {
   }, {});
 }
 
+function getNutrientValue(item: MenuItem, key: NutrientKey): { value: number | null; unit: string } {
+  switch (key) {
+    case "calories": return { value: item.base_calories, unit: "kcal" };
+    case "protein":  return { value: item.base_protein_g !== null ? Number(item.base_protein_g) : null, unit: "g" };
+    case "carbs":    return { value: item.base_carbs_g !== null ? Number(item.base_carbs_g) : null, unit: "g" };
+    case "fat":      return { value: item.base_fat_g !== null ? Number(item.base_fat_g) : null, unit: "g" };
+  }
+}
+
 function MenuItemRow({
   item,
+  nutrient,
   onClick,
 }: {
   item: MenuItem;
+  nutrient: NutrientKey;
   onClick: () => void;
 }) {
-  const hasData = item.base_calories !== null;
+  const { value, unit } = getNutrientValue(item, nutrient);
 
   return (
     <button
@@ -49,12 +61,10 @@ function MenuItemRow({
         )}
       </div>
       <div className="flex-shrink-0 text-right">
-        {hasData ? (
+        {value !== null ? (
           <div>
-            <span className="font-bold text-gray-900 dark:text-gray-100 tabular-nums">
-              {item.base_calories}
-            </span>
-            <span className="text-xs text-gray-400 ml-0.5">kcal</span>
+            <span className="font-bold text-gray-900 dark:text-gray-100 tabular-nums">{value}</span>
+            <span className="text-xs text-gray-400 ml-0.5">{unit}</span>
           </div>
         ) : (
           <span className="text-xs text-gray-300 dark:text-gray-600">—</span>
@@ -69,6 +79,7 @@ export function RestaurantPageClient({
   menu,
 }: RestaurantPageClientProps) {
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [nutrient, setNutrient] = useState<NutrientKey>("calories");
   const grouped = groupByCategory(menu);
   const categories = Object.keys(grouped);
 
@@ -77,10 +88,7 @@ export function RestaurantPageClient({
       {/* Gradient header */}
       <div className="bg-gradient-to-r from-emerald-600 to-teal-500 sticky top-0 z-10">
         <div className="max-w-lg mx-auto px-4 py-4 flex items-center gap-3">
-          <Link
-            href="/"
-            className="text-white/70 hover:text-white transition-colors"
-          >
+          <Link href="/" className="text-white/70 hover:text-white transition-colors">
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <div className="flex-1 min-w-0">
@@ -89,7 +97,10 @@ export function RestaurantPageClient({
               <TierBadge tier={restaurant.tier} />
             </div>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <NutrientSelector value={nutrient} onChange={setNutrient} />
+            <ThemeToggle />
+          </div>
         </div>
       </div>
 
@@ -109,6 +120,7 @@ export function RestaurantPageClient({
                   <MenuItemRow
                     key={item.id}
                     item={item}
+                    nutrient={nutrient}
                     onClick={() => setSelectedItem(item)}
                   />
                 ))}
