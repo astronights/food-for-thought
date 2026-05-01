@@ -70,11 +70,37 @@ function timeAgo(iso: string) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+// ─── Lightbox ────────────────────────────────────────────────────────────────
+
+function Lightbox({ url, onClose }: { url: string; onClose: () => void }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 cursor-zoom-out"
+      onClick={onClose}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt="Full size"
+        className="max-w-full max-h-full object-contain rounded-lg cursor-default"
+        onClick={(e) => e.stopPropagation()}
+      />
+    </div>
+  );
+}
+
 // ─── Submission image ─────────────────────────────────────────────────────────
 
 function SubmissionImage({ imagePath }: { imagePath: string }) {
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lightbox, setLightbox] = useState(false);
 
   useEffect(() => {
     adminFetch(`/api/admin/image?path=${encodeURIComponent(imagePath)}`)
@@ -85,8 +111,17 @@ function SubmissionImage({ imagePath }: { imagePath: string }) {
   if (loading) return <Skeleton className="w-full aspect-video rounded-xl" />;
   if (!url) return null;
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={url} alt="Submission photo" className="w-full rounded-xl object-cover max-h-56" />
+    <>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt="Submission photo"
+        className="w-full rounded-xl object-cover max-h-56 cursor-zoom-in"
+        onClick={() => setLightbox(true)}
+        title="Click to enlarge"
+      />
+      {lightbox && <Lightbox url={url} onClose={() => setLightbox(false)} />}
+    </>
   );
 }
 
@@ -181,9 +216,19 @@ function DishDetail({ sub, onUpdate }: { sub: DishSubmission; onUpdate: () => vo
 // ─── Restaurant submission detail ─────────────────────────────────────────────
 
 interface EditableDish { name: string; category: string }
+interface EditableOption { name: string; price_delta_sgd: number }
+interface EditableGroup {
+  name: string;
+  ui_hint: "pick_one_required" | "pick_one" | "pick_many";
+  max_selections: number;
+  options: EditableOption[];
+}
+
+const inputCls = "w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1 text-xs text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-emerald-500";
 
 function RestaurantDetail({ sub, onUpdate }: { sub: RestaurantSubmission; onUpdate: () => void }) {
-  const extract = sub.ai_extracted_dishes;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const extract = sub.ai_extracted_dishes as any;
   const isBYO = extract && !Array.isArray(extract) && extract?.menu_type === "build_your_own";
 
   const initialDishes: EditableDish[] = (() => {
@@ -193,17 +238,51 @@ function RestaurantDetail({ sub, onUpdate }: { sub: RestaurantSubmission; onUpda
     return [];
   })();
 
+  const initialGroups: EditableGroup[] = (() => {
+    if (!isBYO) return [];
+    return (extract.customisation_groups ?? []).map((g: { name: string; ui_hint: string; max_selections: number; options: { name: string; price_delta_sgd?: number }[] }) => ({
+      name: g.name,
+      ui_hint: g.ui_hint as EditableGroup["ui_hint"],
+      max_selections: g.max_selections ?? 0,
+      options: (g.options ?? []).map((o) => ({ name: o.name, price_delta_sgd: o.price_delta_sgd ?? 0 })),
+    }));
+  })();
+
   const [notes, setNotes] = useState(sub.admin_notes ?? "");
   const [name, setName] = useState(sub.restaurant_name);
   const [slug, setSlug] = useState(sub.restaurant_name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""));
   const [dishes, setDishes] = useState<EditableDish[]>(initialDishes);
+  const [groups, setGroups] = useState<EditableGroup[]>(initialGroups);
   const [saving, setSaving] = useState(false);
 
+  // ── Dish helpers ──
   function updateDish(i: number, field: keyof EditableDish, val: string) {
-    setDishes((prev) => prev.map((d, idx) => idx === i ? { ...d, [field]: val } : d));
+    setDishes((p) => p.map((d, idx) => idx === i ? { ...d, [field]: val } : d));
   }
-  function removeDish(i: number) { setDishes((prev) => prev.filter((_, idx) => idx !== i)); }
-  function addDish() { setDishes((prev) => [...prev, { name: "", category: "Menu" }]); }
+  function removeDish(i: number) { setDishes((p) => p.filter((_, idx) => idx !== i)); }
+  function addDish() { setDishes((p) => [...p, { name: "", category: "Menu" }]); }
+
+  // ── Group helpers ──
+  function updateGroup(gi: number, field: keyof Omit<EditableGroup, "options">, val: string | number) {
+    setGroups((p) => p.map((g, i) => i === gi ? { ...g, [field]: val } : g));
+  }
+  function removeGroup(gi: number) { setGroups((p) => p.filter((_, i) => i !== gi)); }
+  function addGroup() {
+    setGroups((p) => [...p, { name: "New group", ui_hint: "pick_many", max_selections: 0, options: [] }]);
+  }
+
+  // ── Option helpers ──
+  function updateOption(gi: number, oi: number, field: keyof EditableOption, val: string | number) {
+    setGroups((p) => p.map((g, i) => i !== gi ? g : {
+      ...g, options: g.options.map((o, j) => j === oi ? { ...o, [field]: val } : o),
+    }));
+  }
+  function removeOption(gi: number, oi: number) {
+    setGroups((p) => p.map((g, i) => i !== gi ? g : { ...g, options: g.options.filter((_, j) => j !== oi) }));
+  }
+  function addOption(gi: number) {
+    setGroups((p) => p.map((g, i) => i !== gi ? g : { ...g, options: [...g.options, { name: "", price_delta_sgd: 0 }] }));
+  }
 
   async function reject() {
     setSaving(true);
@@ -225,6 +304,7 @@ function RestaurantDetail({ sub, onUpdate }: { sub: RestaurantSubmission; onUpda
         submission_id: sub.id, name, slug,
         cuisine_tags: tags, location_tags: locTags, tier: 3,
         edited_dishes: isBYO ? null : dishes,
+        edited_groups: isBYO ? groups : null,
       }),
     });
     setSaving(false);
@@ -258,33 +338,74 @@ function RestaurantDetail({ sub, onUpdate }: { sub: RestaurantSubmission; onUpda
       {sub.location_description && (
         <p className="text-sm text-gray-500 dark:text-gray-400"><span className="text-xs text-gray-400 font-medium">Location: </span>{sub.location_description}</p>
       )}
-      {sub.cuisine_description && (
-        <p className="text-sm text-gray-500 dark:text-gray-400"><span className="text-xs text-gray-400 font-medium">Cuisine: </span>{sub.cuisine_description}</p>
-      )}
 
-      {isBYO ? (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">Build Your Own menu</span>
-            {extract.base_price_sgd > 0 && <span className="text-xs text-gray-400">Base: ${extract.base_price_sgd}</span>}
+      {/* ── BYO: editable customisation groups ── */}
+      {isBYO && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">Build Your Own</span>
+              {extract.base_price_sgd > 0 && <span className="text-xs text-gray-400">${extract.base_price_sgd}</span>}
+            </div>
+            <button onClick={addGroup} className="text-xs text-emerald-600 flex items-center gap-1 hover:text-emerald-700">
+              <Plus className="h-3 w-3" /> Add group
+            </button>
           </div>
-          {extract.meal_structure && <p className="text-xs text-gray-500 italic">"{extract.meal_structure}"</p>}
-          <div className="space-y-1 max-h-48 overflow-y-auto">
-            {(extract.customisation_groups ?? []).map((g: { name: string; ui_hint: string; max_selections: number; options: { name: string }[] }, i: number) => (
-              <div key={i} className="text-xs">
-                <span className="font-medium text-gray-600 dark:text-gray-400">{g.name}</span>
-                <span className="text-gray-400 ml-1">
-                  ({g.ui_hint === "pick_one_required" ? "pick 1 required" : `pick up to ${g.max_selections || "∞"}`}) — {g.options?.length ?? 0} options
-                </span>
+          {extract.meal_structure && <p className="text-xs text-gray-400 italic">"{extract.meal_structure}"</p>}
+
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {groups.map((g, gi) => (
+              <div key={gi} className="rounded-xl border border-gray-100 dark:border-gray-800 p-3 space-y-2 bg-gray-50 dark:bg-gray-900/50">
+                {/* Group header row */}
+                <div className="flex items-center gap-1.5">
+                  <input value={g.name} onChange={(e) => updateGroup(gi, "name", e.target.value)}
+                    className={`${inputCls} flex-1`} placeholder="Group name" />
+                  <select value={g.ui_hint} onChange={(e) => updateGroup(gi, "ui_hint", e.target.value as EditableGroup["ui_hint"])}
+                    className={`${inputCls} w-28`}>
+                    <option value="pick_one_required">1 required</option>
+                    <option value="pick_one">1 optional</option>
+                    <option value="pick_many">pick many</option>
+                  </select>
+                  {g.ui_hint === "pick_many" && (
+                    <input type="number" value={g.max_selections || ""}
+                      onChange={(e) => updateGroup(gi, "max_selections", Number(e.target.value))}
+                      placeholder="max" className={`${inputCls} w-12`} />
+                  )}
+                  <button onClick={() => removeGroup(gi)} className="text-gray-300 dark:text-gray-600 hover:text-red-400 flex-shrink-0">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+
+                {/* Options */}
+                <div className="space-y-1 ml-2">
+                  {g.options.map((o, oi) => (
+                    <div key={oi} className="flex gap-1.5 items-center">
+                      <input value={o.name} onChange={(e) => updateOption(gi, oi, "name", e.target.value)}
+                        placeholder="Option name" className={`${inputCls} flex-1`} />
+                      <input type="number" value={o.price_delta_sgd || ""}
+                        onChange={(e) => updateOption(gi, oi, "price_delta_sgd", Number(e.target.value))}
+                        placeholder="+$" className={`${inputCls} w-14`} />
+                      <button onClick={() => removeOption(gi, oi)} className="text-gray-300 dark:text-gray-600 hover:text-red-400 flex-shrink-0">
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                  <button onClick={() => addOption(gi)}
+                    className="text-xs text-gray-400 hover:text-emerald-600 flex items-center gap-1 mt-1">
+                    <Plus className="h-3 w-3" /> Add option
+                  </button>
+                </div>
               </div>
             ))}
           </div>
-          <p className="text-xs text-gray-400">Approval creates "Build Your Own" item with all groups + options.</p>
         </div>
-      ) : dishes.length > 0 ? (
+      )}
+
+      {/* ── Regular menu: editable dish list ── */}
+      {!isBYO && dishes.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-medium text-gray-400">Dishes ({dishes.length}) — editable before approval</p>
+            <p className="text-xs font-medium text-gray-400">Dishes ({dishes.length})</p>
             <button onClick={addDish} className="text-xs text-emerald-600 flex items-center gap-1 hover:text-emerald-700">
               <Plus className="h-3 w-3" /> Add
             </button>
@@ -293,11 +414,9 @@ function RestaurantDetail({ sub, onUpdate }: { sub: RestaurantSubmission; onUpda
             {dishes.map((d, i) => (
               <div key={i} className="flex gap-1.5 items-center">
                 <input value={d.name} onChange={(e) => updateDish(i, "name", e.target.value)}
-                  placeholder="Dish name"
-                  className="flex-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                  placeholder="Dish name" className={`${inputCls} flex-1`} />
                 <input value={d.category} onChange={(e) => updateDish(i, "category", e.target.value)}
-                  placeholder="Category"
-                  className="w-24 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                  placeholder="Category" className={`${inputCls} w-24`} />
                 <button onClick={() => removeDish(i)} className="text-gray-300 dark:text-gray-600 hover:text-red-400 flex-shrink-0">
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
@@ -305,7 +424,7 @@ function RestaurantDetail({ sub, onUpdate }: { sub: RestaurantSubmission; onUpda
             ))}
           </div>
         </div>
-      ) : null}
+      )}
 
       <div>
         <label className="text-xs font-medium text-gray-400 mb-1 block">Admin notes</label>

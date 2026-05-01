@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { submission_id, name, slug, cuisine_tags, location_tags, tier, edited_dishes } = body;
+  const { submission_id, name, slug, cuisine_tags, location_tags, tier, edited_dishes, edited_groups } = body;
 
   const { data: restaurant, error: rErr } = await getSupabaseAdmin()
     .from("restaurants")
@@ -78,10 +78,11 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (menuItem) {
-      const groups = (extract.customisation_groups as {
+      // Prefer admin-edited groups if provided
+      const groups = (edited_groups ?? extract.customisation_groups) as {
         name: string; ui_hint: string; max_selections: number;
         options: { name: string; price_delta_sgd: number }[];
-      }[]) ?? [];
+      }[];
 
       for (let gi = 0; gi < groups.length; gi++) {
         const g = groups[gi];
