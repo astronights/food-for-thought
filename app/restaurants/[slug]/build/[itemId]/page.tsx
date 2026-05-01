@@ -1,11 +1,7 @@
 import { notFound } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import type { CustomisationGroup, CustomisationOption, MenuItem, Restaurant } from "@/lib/types";
+import type { MenuItem, Restaurant, GroupWithOptions } from "@/lib/types";
 import { MealBuilderClient } from "@/components/meal-builder-client";
-
-export interface GroupWithOptions extends CustomisationGroup {
-  options: CustomisationOption[];
-}
 
 async function getBuilderData(slug: string, itemId: string): Promise<{
   restaurant: Restaurant;

@@ -62,6 +62,10 @@ export interface CustomisationOption {
   display_order: number;
 }
 
+export interface GroupWithOptions extends CustomisationGroup {
+  options: CustomisationOption[];
+}
+
 export interface NutritionTotals {
   calories: number;
   protein_g: number;

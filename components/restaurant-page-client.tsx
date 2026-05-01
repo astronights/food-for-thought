@@ -19,6 +19,7 @@ interface ContributeTarget {
   dishName: string;
   menuItemId: string | null;
   isNewDish: boolean;
+  hasCustomisation: boolean;
 }
 
 function groupByCategory(items: MenuItem[]): Record<string, MenuItem[]> {
@@ -38,7 +39,29 @@ function getNutrientValue(item: MenuItem, key: NutrientKey): { value: number | n
   }
 }
 
-function BuildableItemCard({ item, restaurantSlug }: { item: MenuItem; restaurantSlug: string }) {
+function BuildableItemCard({
+  item, restaurantSlug, isContributing, onContribute,
+}: {
+  item: MenuItem; restaurantSlug: string;
+  isContributing: boolean; onContribute: () => void;
+}) {
+  if (isContributing) {
+    return (
+      <button
+        onClick={onContribute}
+        className="w-full flex items-center gap-4 p-4 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 rounded-xl border border-amber-100 dark:border-amber-900/40 hover:shadow-sm transition-all active:scale-[0.99] text-left"
+      >
+        <div className="h-10 w-10 rounded-xl bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center flex-shrink-0">
+          <Camera className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-amber-800 dark:text-amber-300 truncate">{item.name}</p>
+          <p className="text-xs text-amber-600/70 dark:text-amber-500 mt-0.5">Tap to contribute — pick your options + upload a photo</p>
+        </div>
+      </button>
+    );
+  }
+
   return (
     <Link href={`/restaurants/${restaurantSlug}/build/${item.id}`}>
       <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 rounded-xl border border-emerald-100 dark:border-emerald-900/40 hover:shadow-sm transition-all active:scale-[0.99]">
@@ -151,7 +174,7 @@ export function RestaurantPageClient({ restaurant, menu }: RestaurantPageClientP
             <p className="text-gray-400 text-sm">No menu items yet.</p>
             {canContribute && (
               <button
-                onClick={() => openContribute({ dishName: "", menuItemId: null, isNewDish: true })}
+                onClick={() => openContribute({ dishName: "", menuItemId: null, isNewDish: true, hasCustomisation: false })}
                 className="mt-3 text-sm text-emerald-600 font-medium"
               >
                 Be the first to add a dish →
@@ -166,7 +189,13 @@ export function RestaurantPageClient({ restaurant, menu }: RestaurantPageClientP
                 <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3 px-1">Build Your Meal</h2>
                 <div className="space-y-3">
                   {buildableItems.map((item) => (
-                    <BuildableItemCard key={item.id} item={item} restaurantSlug={restaurant.slug} />
+                    <BuildableItemCard
+                      key={item.id}
+                      item={item}
+                      restaurantSlug={restaurant.slug}
+                      isContributing={isContributing}
+                      onContribute={() => openContribute({ dishName: item.name, menuItemId: item.id, isNewDish: false, hasCustomisation: true })}
+                    />
                   ))}
                 </div>
               </section>
@@ -184,13 +213,13 @@ export function RestaurantPageClient({ restaurant, menu }: RestaurantPageClientP
                       nutrient={nutrient}
                       isContributing={isContributing}
                       onClick={() => setSelectedItem(item)}
-                      onContribute={() => openContribute({ dishName: item.name, menuItemId: item.id, isNewDish: false })}
+                      onContribute={() => openContribute({ dishName: item.name, menuItemId: item.id, isNewDish: false, hasCustomisation: false })}
                     />
                   ))}
                   {/* New dish row in contribute mode */}
                   {isContributing && (
                     <button
-                      onClick={() => openContribute({ dishName: "", menuItemId: null, isNewDish: true })}
+                      onClick={() => openContribute({ dishName: "", menuItemId: null, isNewDish: true, hasCustomisation: false })}
                       className="w-full flex items-center gap-2 py-3.5 -mx-4 pl-4 pr-2 text-emerald-600 dark:text-emerald-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
                     >
                       <PlusCircle className="h-4 w-4" />
@@ -204,7 +233,7 @@ export function RestaurantPageClient({ restaurant, menu }: RestaurantPageClientP
             {/* New dish button when no categories yet */}
             {isContributing && categories.length === 0 && (
               <button
-                onClick={() => openContribute({ dishName: "", menuItemId: null, isNewDish: true })}
+                onClick={() => openContribute({ dishName: "", menuItemId: null, isNewDish: true, hasCustomisation: false })}
                 className="w-full flex items-center justify-center gap-2 py-4 rounded-xl border-2 border-dashed border-emerald-300 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400"
               >
                 <PlusCircle className="h-5 w-5" />
@@ -244,6 +273,7 @@ export function RestaurantPageClient({ restaurant, menu }: RestaurantPageClientP
         dishName={contributeTarget?.dishName ?? ""}
         menuItemId={contributeTarget?.menuItemId ?? null}
         isNewDish={contributeTarget?.isNewDish ?? true}
+        hasCustomisation={contributeTarget?.hasCustomisation ?? false}
       />
     </main>
   );

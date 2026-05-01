@@ -8,7 +8,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { NutrientSelector, type NutrientKey } from "@/components/nutrient-selector";
 import { calculateNutrition } from "@/lib/nutrition";
 import type { CustomisationOption, MenuItem, Restaurant } from "@/lib/types";
-import type { GroupWithOptions } from "@/app/restaurants/[slug]/build/[itemId]/page";
+import type { GroupWithOptions } from "@/lib/types";
 
 interface MealBuilderClientProps {
   restaurant: Restaurant;

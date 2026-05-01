@@ -1,9 +1,12 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
-import { Camera, ImagePlus, CheckCircle } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Camera, CheckCircle } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import type { GroupWithOptions } from "@/lib/types";
 
 interface ContributeDishSheetProps {
   open: boolean;
@@ -13,7 +16,10 @@ interface ContributeDishSheetProps {
   dishName: string;
   menuItemId: string | null;
   isNewDish: boolean;
+  hasCustomisation?: boolean;
 }
+
+type Selections = Record<string, string | string[]>;
 
 function getSessionId(): string {
   if (typeof window === "undefined") return "ssr";
@@ -25,6 +31,112 @@ function getSessionId(): string {
   return id;
 }
 
+function buildSelectionSummary(groups: GroupWithOptions[], selections: Selections): string {
+  return groups
+    .map((group) => {
+      const sel = selections[group.id];
+      if (!sel || (Array.isArray(sel) && sel.length === 0)) return null;
+      const ids = Array.isArray(sel) ? sel : [sel];
+      const names = group.options
+        .filter((o) => ids.includes(o.id))
+        .map((o) => o.name)
+        .join(", ");
+      return names ? `${group.name}: ${names}` : null;
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function CustomisationGroups({
+  groups,
+  selections,
+  onChange,
+}: {
+  groups: GroupWithOptions[];
+  selections: Selections;
+  onChange: (groupId: string, value: string | string[]) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      {groups.map((group) => {
+        const isPickMany = group.ui_hint === "pick_many";
+        const currentMany = (selections[group.id] as string[] | undefined) ?? [];
+
+        return (
+          <div key={group.id}>
+            <div className="flex items-center gap-2 mb-2">
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{group.name}</p>
+              {group.ui_hint === "pick_one_required" && (
+                <span className="text-xs text-red-400">Required</span>
+              )}
+              {isPickMany && group.max_selections && (
+                <span className="text-xs text-gray-400">up to {group.max_selections}</span>
+              )}
+            </div>
+            <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
+              {group.options.map((option) => {
+                const isSelected = isPickMany
+                  ? currentMany.includes(option.id)
+                  : selections[group.id] === option.id;
+                const isDisabled =
+                  isPickMany &&
+                  group.max_selections !== null &&
+                  currentMany.length >= group.max_selections &&
+                  !isSelected;
+
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    disabled={isDisabled}
+                    onClick={() => {
+                      if (isDisabled) return;
+                      if (isPickMany) {
+                        const next = currentMany.includes(option.id)
+                          ? currentMany.filter((id) => id !== option.id)
+                          : [...currentMany, option.id];
+                        onChange(group.id, next);
+                      } else {
+                        onChange(group.id, option.id);
+                      }
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${
+                      isSelected
+                        ? "bg-emerald-50 dark:bg-emerald-950/30"
+                        : isDisabled
+                        ? "opacity-40"
+                        : "hover:bg-gray-100 dark:hover:bg-gray-800"
+                    }`}
+                  >
+                    <div
+                      className={`flex-shrink-0 h-4 w-4 border-2 flex items-center justify-center transition-colors ${
+                        isPickMany ? "rounded-sm" : "rounded-full"
+                      } ${
+                        isSelected
+                          ? "border-emerald-500 bg-emerald-500"
+                          : "border-gray-300 dark:border-gray-600"
+                      }`}
+                    >
+                      {isSelected && (
+                        <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </div>
+                    <span className={`flex-1 text-sm ${isSelected ? "text-emerald-700 dark:text-emerald-400 font-medium" : "text-gray-700 dark:text-gray-300"}`}>
+                      {option.name}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function ContributeDishSheet({
   open,
   onClose,
@@ -33,13 +145,45 @@ export function ContributeDishSheet({
   dishName,
   menuItemId,
   isNewDish,
+  hasCustomisation = false,
 }: ContributeDishSheetProps) {
   const [name, setName] = useState(dishName);
   const [description, setDescription] = useState("");
   const [image, setImage] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [groups, setGroups] = useState<GroupWithOptions[]>([]);
+  const [selections, setSelections] = useState<Selections>({});
+  const [loadingGroups, setLoadingGroups] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Fetch customisation groups when sheet opens for a customisable item
+  useEffect(() => {
+    if (!open || !hasCustomisation || !menuItemId) return;
+    setLoadingGroups(true);
+    supabase
+      .from("customisation_groups")
+      .select("*, customisation_options(*)")
+      .eq("menu_item_id", menuItemId)
+      .order("display_order")
+      .then(({ data }) => {
+        if (data) {
+          setGroups(
+            data.map((g) => ({
+              ...g,
+              options: (g.customisation_options as GroupWithOptions["options"]).sort(
+                (a, b) => a.display_order - b.display_order
+              ),
+            }))
+          );
+        }
+        setLoadingGroups(false);
+      });
+  }, [open, hasCustomisation, menuItemId]);
+
+  function handleSelectionChange(groupId: string, value: string | string[]) {
+    setSelections((prev) => ({ ...prev, [groupId]: value }));
+  }
 
   function handleImage(file: File) {
     setImage(file);
@@ -49,11 +193,19 @@ export function ContributeDishSheet({
   async function handleSubmit() {
     if (!image || !description.trim()) return;
     setStatus("loading");
+
+    const selectionSummary = hasCustomisation
+      ? buildSelectionSummary(groups, selections)
+      : "";
+    const fullDescription = selectionSummary
+      ? `${selectionSummary}\n\n${description}`
+      : description;
+
     try {
       const fd = new FormData();
       fd.append("image", image);
       fd.append("dish_name", name);
-      fd.append("order_description", description);
+      fd.append("order_description", fullDescription);
       fd.append("restaurant_id", restaurantId);
       if (menuItemId) fd.append("menu_item_id", menuItemId);
       fd.append("session_id", getSessionId());
@@ -72,6 +224,8 @@ export function ContributeDishSheet({
     setImage(null);
     setPreview(null);
     setStatus("idle");
+    setSelections({});
+    setGroups([]);
     onClose();
   }
 
@@ -93,8 +247,8 @@ export function ContributeDishSheet({
             <button onClick={handleClose} className="mt-4 text-sm text-emerald-600 font-medium">Close</button>
           </div>
         ) : (
-          <div className="px-5 space-y-4">
-            {/* Dish name */}
+          <div className="px-5 space-y-5">
+            {/* Dish name — only for new dishes */}
             {isNewDish && (
               <div>
                 <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 block">Dish name</label>
@@ -104,6 +258,27 @@ export function ContributeDishSheet({
                   placeholder="e.g. Acai Bowl with Granola"
                   className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
+              </div>
+            )}
+
+            {/* Customisation options */}
+            {hasCustomisation && (
+              <div>
+                <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 block">
+                  What did you pick?
+                </label>
+                {loadingGroups ? (
+                  <div className="space-y-3">
+                    <Skeleton className="h-10 rounded-xl" />
+                    <Skeleton className="h-10 rounded-xl" />
+                  </div>
+                ) : (
+                  <CustomisationGroups
+                    groups={groups}
+                    selections={selections}
+                    onChange={handleSelectionChange}
+                  />
+                )}
               </div>
             )}
 
@@ -143,16 +318,16 @@ export function ContributeDishSheet({
               )}
             </div>
 
-            {/* Order description */}
+            {/* Description */}
             <div>
               <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 block">
-                What did you order? <span className="text-red-400">*</span>
+                Anything else about your order? <span className="text-red-400">*</span>
               </label>
               <Textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="e.g. Large acai bowl with granola, banana, honey. No added sugar."
-                className="rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm min-h-[90px] resize-none"
+                placeholder={hasCustomisation ? "e.g. Extra granola, no honey, large size" : "e.g. Large acai bowl with granola, banana, honey. No added sugar."}
+                className="rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm min-h-[80px] resize-none"
               />
             </div>
 
