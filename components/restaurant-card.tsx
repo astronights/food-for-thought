@@ -8,8 +8,8 @@ interface RestaurantCardProps {
 
 const TIER_ACCENT: Record<number, string> = {
   1: "border-l-emerald-400",
-  2: "border-l-amber-400",
-  3: "border-l-gray-200 dark:border-l-gray-700",
+  2: "border-l-blue-400",
+  3: "border-l-yellow-300 dark:border-l-yellow-700",
 };
 
 export function RestaurantCard({ restaurant }: RestaurantCardProps) {
