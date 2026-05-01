@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { estimateNutrition } from "@/lib/gemini";
+import { estimateNutrition, estimateNutritionFromText } from "@/lib/gemini";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 
 export async function POST(req: NextRequest) {
@@ -17,13 +17,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    // ── Correction flag: no image, no Gemini call ─────────────────────────────
+    // ── Correction flag: text-only Gemini extraction, no image ───────────────
     if (isCorrectionFlag) {
+      const nutrition = await estimateNutritionFromText(orderDescription);
       const { error } = await getSupabaseAdmin().from("crowdsource_submissions").insert({
         restaurant_id: restaurantId,
         menu_item_id: menuItemId || null,
         dish_name_raw: dishName,
         order_description: orderDescription,
+        ai_calories: nutrition.calories,
+        ai_protein_g: nutrition.protein_g,
+        ai_carbs_g: nutrition.carbs_g,
+        ai_fat_g: nutrition.fat_g,
+        ai_fibre_g: nutrition.fibre_g,
+        ai_sugar_g: nutrition.sugar_g,
+        ai_sat_fat_g: nutrition.sat_fat_g,
+        ai_sodium_mg: nutrition.sodium_mg,
+        ai_confidence: nutrition.confidence,
+        ai_notes: nutrition.notes,
+        ai_price_sgd: nutrition.price_sgd || null,
+        ai_weight_g: nutrition.weight_g || null,
         is_correction_flag: true,
         image_processed: false,
         submitter_session_id: sessionId,

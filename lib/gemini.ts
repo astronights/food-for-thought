@@ -45,6 +45,31 @@ export interface NutritionEstimate {
   weight_g: number;
 }
 
+export async function estimateNutritionFromText(
+  flagDescription: string
+): Promise<NutritionEstimate> {
+  const model = genAI.getGenerativeModel({
+    model: MODEL,
+    generationConfig: { responseMimeType: "application/json", responseSchema: NUTRITION_SCHEMA },
+  });
+  const result = await model.generateContent([
+    {
+      text: `You are a nutrition estimation assistant for Singapore restaurant dishes.
+
+A user has flagged a potential issue with verified nutrition data. Based solely on their text description, estimate what the correct nutrition values should be.
+
+Rules:
+- If they mention specific numbers, use those directly
+- If they describe the dish qualitatively (e.g. "it felt heavier", "the portion was huge"), estimate accordingly
+- Set confidence between 0.2 and 0.5 — this is text-only, no photo
+- In notes, explain which parts of their text you relied on
+
+User flag: ${flagDescription}`,
+    },
+  ]);
+  return JSON.parse(result.response.text()) as NutritionEstimate;
+}
+
 export async function estimateNutrition(
   base64Image: string,
   mimeType: string,

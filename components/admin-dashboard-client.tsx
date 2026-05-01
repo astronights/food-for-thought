@@ -155,9 +155,12 @@ function DishDetail({ sub, onUpdate }: { sub: DishSubmission; onUpdate: () => vo
   return (
     <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 space-y-4">
       {sub.is_correction_flag && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40">
-          <Flag className="h-4 w-4 text-amber-500 flex-shrink-0" />
-          <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">Correction flag — user flagged an issue with verified data. No photo or AI extraction.</p>
+        <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40">
+          <Flag className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">Correction flag on verified data</p>
+            <p className="text-xs text-amber-600/70 dark:text-amber-500 mt-0.5">Gemini estimated suggested values from the user&apos;s text. Edit as needed, then approve to log the correction.</p>
+          </div>
         </div>
       )}
 
@@ -182,26 +185,29 @@ function DishDetail({ sub, onUpdate }: { sub: DishSubmission; onUpdate: () => vo
         </div>
       )}
 
-      {!sub.is_correction_flag && (
-        <div>
-          <p className="text-xs font-medium text-gray-400 mb-2">Nutrition values (editable)</p>
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { label: "Calories", val: cal, set: setCal },
-              { label: "Protein g", val: prot, set: setProt },
-              { label: "Carbs g", val: carbs, set: setCarbs },
-              { label: "Fat g", val: fat, set: setFat },
-              { label: "Sodium mg", val: sodium, set: setSodium },
-            ].map(({ label, val, set }) => (
-              <div key={label}>
-                <label className="text-xs text-gray-400 block mb-0.5">{label}</label>
-                <input value={val} onChange={(e) => set(e.target.value)}
-                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
-              </div>
-            ))}
-          </div>
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-medium text-gray-400">
+            {sub.is_correction_flag ? "Gemini estimate from flag text — editable" : "Nutrition values (editable)"}
+          </p>
+          {sub.is_correction_flag && <ConfidenceBadge score={sub.ai_confidence} />}
         </div>
-      )}
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { label: "Calories", val: cal, set: setCal },
+            { label: "Protein g", val: prot, set: setProt },
+            { label: "Carbs g", val: carbs, set: setCarbs },
+            { label: "Fat g", val: fat, set: setFat },
+            { label: "Sodium mg", val: sodium, set: setSodium },
+          ].map(({ label, val, set }) => (
+            <div key={label}>
+              <label className="text-xs text-gray-400 block mb-0.5">{label}</label>
+              <input value={val} onChange={(e) => set(e.target.value)}
+                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+            </div>
+          ))}
+        </div>
+      </div>
 
       <div>
         <label className="text-xs font-medium text-gray-400 mb-1 block">Admin notes</label>
