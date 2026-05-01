@@ -3,7 +3,7 @@ import type { Restaurant } from "@/lib/types";
 import { HomeClient } from "@/components/home-client";
 import { ThemeToggle } from "@/components/theme-toggle";
 
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 async function getRestaurants(): Promise<Restaurant[]> {
   const { data, error } = await supabase
