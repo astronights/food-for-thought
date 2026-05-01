@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle, XCircle, ChevronDown, ChevronUp, LogOut, Plus, Trash2, ImageIcon } from "lucide-react";
+import { CheckCircle, XCircle, ChevronDown, ChevronUp, LogOut, Plus, Trash2, ImageIcon, Flag } from "lucide-react";
 
 // ─── Auth helper ─────────────────────────────────────────────────────────────
 
@@ -25,6 +25,7 @@ async function adminFetch(url: string, options: RequestInit = {}) {
 
 interface DishSubmission {
   id: string;
+  is_correction_flag: boolean;
   restaurants: { name: string; slug: string } | null;
   dish_name_raw: string;
   order_description: string;
@@ -153,7 +154,14 @@ function DishDetail({ sub, onUpdate }: { sub: DishSubmission; onUpdate: () => vo
 
   return (
     <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 space-y-4">
-      {sub.image_path && (
+      {sub.is_correction_flag && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40">
+          <Flag className="h-4 w-4 text-amber-500 flex-shrink-0" />
+          <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">Correction flag — user flagged an issue with verified data. No photo or AI extraction.</p>
+        </div>
+      )}
+
+      {sub.image_path && !sub.is_correction_flag && (
         <div>
           <p className="text-xs font-medium text-gray-400 mb-1.5 flex items-center gap-1">
             <ImageIcon className="h-3 w-3" /> Submitted photo
@@ -163,7 +171,7 @@ function DishDetail({ sub, onUpdate }: { sub: DishSubmission; onUpdate: () => vo
       )}
 
       <div>
-        <p className="text-xs font-medium text-gray-400 mb-1">What they ordered</p>
+        <p className="text-xs font-medium text-gray-400 mb-1">{sub.is_correction_flag ? "What they flagged" : "What they ordered"}</p>
         <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">{sub.order_description}</p>
       </div>
 
@@ -174,24 +182,26 @@ function DishDetail({ sub, onUpdate }: { sub: DishSubmission; onUpdate: () => vo
         </div>
       )}
 
-      <div>
-        <p className="text-xs font-medium text-gray-400 mb-2">Nutrition values (editable)</p>
-        <div className="grid grid-cols-3 gap-2">
-          {[
-            { label: "Calories", val: cal, set: setCal },
-            { label: "Protein g", val: prot, set: setProt },
-            { label: "Carbs g", val: carbs, set: setCarbs },
-            { label: "Fat g", val: fat, set: setFat },
-            { label: "Sodium mg", val: sodium, set: setSodium },
-          ].map(({ label, val, set }) => (
-            <div key={label}>
-              <label className="text-xs text-gray-400 block mb-0.5">{label}</label>
-              <input value={val} onChange={(e) => set(e.target.value)}
-                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
-            </div>
-          ))}
+      {!sub.is_correction_flag && (
+        <div>
+          <p className="text-xs font-medium text-gray-400 mb-2">Nutrition values (editable)</p>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: "Calories", val: cal, set: setCal },
+              { label: "Protein g", val: prot, set: setProt },
+              { label: "Carbs g", val: carbs, set: setCarbs },
+              { label: "Fat g", val: fat, set: setFat },
+              { label: "Sodium mg", val: sodium, set: setSodium },
+            ].map(({ label, val, set }) => (
+              <div key={label}>
+                <label className="text-xs text-gray-400 block mb-0.5">{label}</label>
+                <input value={val} onChange={(e) => set(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       <div>
         <label className="text-xs font-medium text-gray-400 mb-1 block">Admin notes</label>
@@ -562,7 +572,9 @@ export function AdminDashboardClient() {
                     <div className="flex-1 text-left min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium text-gray-900 dark:text-gray-100 truncate">{sub.dish_name_raw || "Unnamed dish"}</span>
-                        <ConfidenceBadge score={sub.ai_confidence} />
+                        {sub.is_correction_flag
+                          ? <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 flex items-center gap-1"><Flag className="h-3 w-3" />Flag</span>
+                          : <ConfidenceBadge score={sub.ai_confidence} />}
                         {sub.image_path && <ImageIcon className="h-3.5 w-3.5 text-gray-400" />}
                       </div>
                       <p className="text-xs text-gray-400 mt-0.5">{sub.restaurants?.name ?? "Unknown"} · {timeAgo(sub.created_at)}</p>

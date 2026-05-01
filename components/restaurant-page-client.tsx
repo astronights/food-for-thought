@@ -7,8 +7,9 @@ import { NutritionSheet } from "@/components/nutrition-sheet";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NutrientSelector, type NutrientKey } from "@/components/nutrient-selector";
 import { ContributeDishSheet } from "@/components/contribute-dish-sheet";
+import { FlagCorrectionSheet } from "@/components/flag-correction-sheet";
 import type { MenuItem, Restaurant } from "@/lib/types";
-import { ArrowLeft, ChefHat, Camera, PlusCircle, X } from "lucide-react";
+import { ArrowLeft, ChefHat, Camera, PlusCircle, X, Flag } from "lucide-react";
 
 interface RestaurantPageClientProps {
   restaurant: Restaurant;
@@ -20,6 +21,7 @@ interface ContributeTarget {
   menuItemId: string | null;
   isNewDish: boolean;
   hasCustomisation: boolean;
+  isVerified: boolean;
 }
 
 function groupByCategory(items: MenuItem[]): Record<string, MenuItem[]> {
@@ -40,23 +42,37 @@ function getNutrientValue(item: MenuItem, key: NutrientKey): { value: number | n
 }
 
 function BuildableItemCard({
-  item, restaurantSlug, isContributing, onContribute,
+  item, restaurantSlug, isContributing, onContribute, onFlag,
 }: {
   item: MenuItem; restaurantSlug: string;
-  isContributing: boolean; onContribute: () => void;
+  isContributing: boolean; onContribute: () => void; onFlag: () => void;
 }) {
+  const isVerified = item.data_source === "verified";
+
   if (isContributing) {
+    const action = isVerified ? onFlag : onContribute;
+    const accent = isVerified
+      ? "from-amber-50 to-yellow-50 dark:from-amber-950/20 dark:to-yellow-950/20 border-amber-100 dark:border-amber-900/40"
+      : "from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 border-amber-100 dark:border-amber-900/40";
+    const iconColor = isVerified ? "text-amber-500" : "text-amber-600 dark:text-amber-400";
+    const textColor = isVerified ? "text-amber-700 dark:text-amber-300" : "text-amber-800 dark:text-amber-300";
+    const subtext = isVerified
+      ? "Tap to flag a discrepancy with the verified data"
+      : "Tap to contribute — pick your options + upload a photo";
+
     return (
       <button
-        onClick={onContribute}
-        className="w-full flex items-center gap-4 p-4 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 rounded-xl border border-amber-100 dark:border-amber-900/40 hover:shadow-sm transition-all active:scale-[0.99] text-left"
+        onClick={action}
+        className={`w-full flex items-center gap-4 p-4 bg-gradient-to-r ${accent} rounded-xl border hover:shadow-sm transition-all active:scale-[0.99] text-left`}
       >
         <div className="h-10 w-10 rounded-xl bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center flex-shrink-0">
-          <Camera className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+          {isVerified
+            ? <Flag className={`h-5 w-5 ${iconColor}`} />
+            : <Camera className={`h-5 w-5 ${iconColor}`} />}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-amber-800 dark:text-amber-300 truncate">{item.name}</p>
-          <p className="text-xs text-amber-600/70 dark:text-amber-500 mt-0.5">Tap to contribute — pick your options + upload a photo</p>
+          <p className={`font-semibold truncate ${textColor}`}>{item.name}</p>
+          <p className="text-xs text-amber-600/70 dark:text-amber-500 mt-0.5">{subtext}</p>
         </div>
       </button>
     );
@@ -83,16 +99,17 @@ function BuildableItemCard({
 }
 
 function MenuItemRow({
-  item, nutrient, isContributing, onClick, onContribute,
+  item, nutrient, isContributing, onClick, onContribute, onFlag,
 }: {
   item: MenuItem; nutrient: NutrientKey; isContributing: boolean;
-  onClick: () => void; onContribute: () => void;
+  onClick: () => void; onContribute: () => void; onFlag: () => void;
 }) {
   const { value, unit } = getNutrientValue(item, nutrient);
+  const isVerified = item.data_source === "verified";
 
   return (
     <button
-      onClick={isContributing ? onContribute : onClick}
+      onClick={isContributing ? (isVerified ? onFlag : onContribute) : onClick}
       className="w-full flex items-center justify-between py-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50 active:bg-gray-100 dark:active:bg-gray-800 transition-colors -mx-4 pl-4 pr-2"
     >
       <div className="flex-1 min-w-0 pr-2">
@@ -103,7 +120,9 @@ function MenuItemRow({
       </div>
       <div className="flex-shrink-0">
         {isContributing ? (
-          <Camera className="h-4 w-4 text-emerald-500" />
+          isVerified
+            ? <Flag className="h-4 w-4 text-amber-400" />
+            : <Camera className="h-4 w-4 text-emerald-500" />
         ) : value !== null ? (
           <div>
             <span className="font-bold text-gray-900 dark:text-gray-100 tabular-nums">{value}</span>
@@ -122,8 +141,9 @@ export function RestaurantPageClient({ restaurant, menu }: RestaurantPageClientP
   const [nutrient, setNutrient] = useState<NutrientKey>("calories");
   const [isContributing, setIsContributing] = useState(false);
   const [contributeTarget, setContributeTarget] = useState<ContributeTarget | null>(null);
+  const [flagTarget, setFlagTarget] = useState<{ dishName: string; menuItemId: string | null } | null>(null);
 
-  const canContribute = restaurant.tier !== 1;
+  const canContribute = true;
   const buildableItems = menu.filter((i) => i.has_customisation);
   const regularItems = menu.filter((i) => !i.has_customisation);
   const grouped = groupByCategory(regularItems);
@@ -174,7 +194,7 @@ export function RestaurantPageClient({ restaurant, menu }: RestaurantPageClientP
             <p className="text-gray-400 text-sm">No menu items yet.</p>
             {canContribute && (
               <button
-                onClick={() => openContribute({ dishName: "", menuItemId: null, isNewDish: true, hasCustomisation: false })}
+                onClick={() => openContribute({ dishName: "", menuItemId: null, isNewDish: true, hasCustomisation: false, isVerified: false })}
                 className="mt-3 text-sm text-emerald-600 font-medium"
               >
                 Be the first to add a dish →
@@ -194,7 +214,8 @@ export function RestaurantPageClient({ restaurant, menu }: RestaurantPageClientP
                       item={item}
                       restaurantSlug={restaurant.slug}
                       isContributing={isContributing}
-                      onContribute={() => openContribute({ dishName: item.name, menuItemId: item.id, isNewDish: false, hasCustomisation: true })}
+                      onContribute={() => openContribute({ dishName: item.name, menuItemId: item.id, isNewDish: false, hasCustomisation: true, isVerified: item.data_source === "verified" })}
+                      onFlag={() => setFlagTarget({ dishName: item.name, menuItemId: item.id })}
                     />
                   ))}
                 </div>
@@ -213,13 +234,14 @@ export function RestaurantPageClient({ restaurant, menu }: RestaurantPageClientP
                       nutrient={nutrient}
                       isContributing={isContributing}
                       onClick={() => setSelectedItem(item)}
-                      onContribute={() => openContribute({ dishName: item.name, menuItemId: item.id, isNewDish: false, hasCustomisation: false })}
+                      onContribute={() => openContribute({ dishName: item.name, menuItemId: item.id, isNewDish: false, hasCustomisation: false, isVerified: item.data_source === "verified" })}
+                      onFlag={() => setFlagTarget({ dishName: item.name, menuItemId: item.id })}
                     />
                   ))}
                   {/* New dish row in contribute mode */}
                   {isContributing && (
                     <button
-                      onClick={() => openContribute({ dishName: "", menuItemId: null, isNewDish: true, hasCustomisation: false })}
+                      onClick={() => openContribute({ dishName: "", menuItemId: null, isNewDish: true, hasCustomisation: false, isVerified: false })}
                       className="w-full flex items-center gap-2 py-3.5 -mx-4 pl-4 pr-2 text-emerald-600 dark:text-emerald-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
                     >
                       <PlusCircle className="h-4 w-4" />
@@ -233,7 +255,7 @@ export function RestaurantPageClient({ restaurant, menu }: RestaurantPageClientP
             {/* New dish button when no categories yet */}
             {isContributing && categories.length === 0 && (
               <button
-                onClick={() => openContribute({ dishName: "", menuItemId: null, isNewDish: true, hasCustomisation: false })}
+                onClick={() => openContribute({ dishName: "", menuItemId: null, isNewDish: true, hasCustomisation: false, isVerified: false })}
                 className="w-full flex items-center justify-center gap-2 py-4 rounded-xl border-2 border-dashed border-emerald-300 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400"
               >
                 <PlusCircle className="h-5 w-5" />
@@ -266,7 +288,7 @@ export function RestaurantPageClient({ restaurant, menu }: RestaurantPageClientP
       />
 
       <ContributeDishSheet
-        open={contributeTarget !== null}
+        open={contributeTarget !== null && !contributeTarget?.isVerified}
         onClose={() => setContributeTarget(null)}
         restaurantId={restaurant.id}
         restaurantName={restaurant.name}
@@ -274,6 +296,15 @@ export function RestaurantPageClient({ restaurant, menu }: RestaurantPageClientP
         menuItemId={contributeTarget?.menuItemId ?? null}
         isNewDish={contributeTarget?.isNewDish ?? true}
         hasCustomisation={contributeTarget?.hasCustomisation ?? false}
+      />
+
+      <FlagCorrectionSheet
+        open={flagTarget !== null}
+        onClose={() => setFlagTarget(null)}
+        restaurantId={restaurant.id}
+        restaurantName={restaurant.name}
+        dishName={flagTarget?.dishName ?? ""}
+        menuItemId={flagTarget?.menuItemId ?? null}
       />
     </main>
   );

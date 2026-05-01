@@ -11,16 +11,36 @@ export async function POST(req: NextRequest) {
     const restaurantId = formData.get("restaurant_id") as string;
     const menuItemId = formData.get("menu_item_id") as string | null;
     const sessionId = formData.get("session_id") as string;
+    const isCorrectionFlag = formData.get("is_correction_flag") === "true";
 
-    if (!image || !orderDescription || !restaurantId) {
+    if (!orderDescription || !restaurantId) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+
+    // ── Correction flag: no image, no Gemini call ─────────────────────────────
+    if (isCorrectionFlag) {
+      const { error } = await getSupabaseAdmin().from("crowdsource_submissions").insert({
+        restaurant_id: restaurantId,
+        menu_item_id: menuItemId || null,
+        dish_name_raw: dishName,
+        order_description: orderDescription,
+        is_correction_flag: true,
+        image_processed: false,
+        submitter_session_id: sessionId,
+      });
+      if (error) throw error;
+      return NextResponse.json({ success: true });
+    }
+
+    // ── Full nutrition submission: image required ──────────────────────────────
+    if (!image || image.size === 0) {
+      return NextResponse.json({ error: "Image is required" }, { status: 400 });
     }
 
     const buffer = Buffer.from(await image.arrayBuffer());
     const base64Image = buffer.toString("base64");
     const mimeType = image.type;
 
-    // Run AI estimation and image upload in parallel
     const ext = mimeType.split("/")[1] ?? "jpg";
     const imagePath = `dish-submissions/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
@@ -48,6 +68,7 @@ export async function POST(req: NextRequest) {
       ai_notes: nutrition.notes,
       ai_price_sgd: nutrition.price_sgd || null,
       ai_weight_g: nutrition.weight_g || null,
+      is_correction_flag: false,
       submitter_session_id: sessionId,
       image_processed: true,
       image_path: storedImagePath,
