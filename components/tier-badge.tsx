@@ -18,23 +18,25 @@ export function TierBadge({ tier, submissionCount }: TierBadgeProps) {
       </span>
     );
   }
+
   if (tier === 2) {
     const label = submissionCount
       ? `Community estimate · ${submissionCount} submission${submissionCount === 1 ? "" : "s"}`
-      : "Community estimate";
+      : "Community estimate — not yet verified";
     return (
       <span
         title={label}
-        className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 text-xs flex-shrink-0"
+        className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-500 dark:text-blue-400 text-xs flex-shrink-0 tracking-tighter leading-none"
       >
-        ~
+        ···
       </span>
     );
   }
+
   return (
     <span
-      title="No nutrition data yet"
-      className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-400 text-xs flex-shrink-0"
+      title="No nutrition data yet — be the first to contribute"
+      className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-yellow-100 dark:bg-yellow-900/40 text-yellow-500 dark:text-yellow-400 text-xs flex-shrink-0 font-semibold"
     >
       ?
     </span>
