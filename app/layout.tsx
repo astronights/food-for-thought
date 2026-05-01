@@ -34,6 +34,7 @@ export const metadata: Metadata = {
     description: "Look up calorie and nutrition info for Singapore restaurants. No sign-up needed.",
   },
   robots: { index: true, follow: true },
+  verification: { google: "hLj2N6fY2BGfe1J9j5U4tr2E_WYzpuAOUgomWDtNF70" },
 };
 
 export default function RootLayout({
