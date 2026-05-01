@@ -3,6 +3,20 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+
+async function adminFetch(url: string, options: RequestInit = {}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...options.headers,
+      ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      ...(options.body && !(options.body instanceof FormData)
+        ? { "Content-Type": "application/json" }
+        : {}),
+    },
+  });
+}
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
@@ -78,7 +92,7 @@ function DishDetail({ sub, onUpdate }: { sub: DishSubmission; onUpdate: () => vo
 
   async function submit(status: "approved" | "rejected") {
     setSaving(true);
-    await fetch("/api/admin/submissions", {
+    await adminFetch("/api/admin/submissions", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -168,7 +182,7 @@ function RestaurantDetail({ sub, onUpdate }: { sub: RestaurantSubmission; onUpda
 
   async function reject() {
     setSaving(true);
-    await fetch("/api/admin/restaurant-submissions", {
+    await adminFetch("/api/admin/restaurant-submissions", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: sub.id, status: "rejected", admin_notes: notes }),
@@ -181,7 +195,7 @@ function RestaurantDetail({ sub, onUpdate }: { sub: RestaurantSubmission; onUpda
     setSaving(true);
     const tags = sub.cuisine_description?.split(",").map((s) => s.trim().toLowerCase()) ?? [];
     const locTags = sub.location_description?.split(",").map((s) => s.trim()) ?? [];
-    await fetch("/api/admin/restaurant-submissions", {
+    await adminFetch("/api/admin/restaurant-submissions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ submission_id: sub.id, name, slug, cuisine_tags: tags, location_tags: locTags, tier: 3 }),
@@ -270,8 +284,8 @@ export function AdminDashboardClient() {
   async function loadData() {
     setLoading(true);
     const [d, r] = await Promise.all([
-      fetch("/api/admin/submissions").then((r) => r.json()),
-      fetch("/api/admin/restaurant-submissions").then((r) => r.json()),
+      adminFetch("/api/admin/submissions").then((r) => r.json()),
+      adminFetch("/api/admin/restaurant-submissions").then((r) => r.json()),
     ]);
     setDishSubs(Array.isArray(d) ? d : []);
     setRestSubs(Array.isArray(r) ? r : []);

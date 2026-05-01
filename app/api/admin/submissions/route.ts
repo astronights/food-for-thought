@@ -1,21 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { requireAdmin } from "@/lib/require-admin";
 
-async function requireAdmin() {
-  const cookieStore = await cookies();
-  const client = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  );
-  const { data: { user } } = await client.auth.getUser();
-  return user;
-}
-
-export async function GET() {
-  const user = await requireAdmin();
+export async function GET(req: NextRequest) {
+  const user = await requireAdmin(req);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { data, error } = await getSupabaseAdmin()
@@ -28,7 +16,7 @@ export async function GET() {
 }
 
 export async function PATCH(req: NextRequest) {
-  const user = await requireAdmin();
+  const user = await requireAdmin(req);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
