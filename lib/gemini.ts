@@ -18,13 +18,17 @@ const NUTRITION_SCHEMA: Schema = {
     sodium_mg:   { type: SchemaType.INTEGER, description: "Sodium in milligrams" },
     confidence:  { type: SchemaType.NUMBER,  description: "Confidence score 0.0 to 1.0" },
     notes:       { type: SchemaType.STRING,  description: "Brief explanation of assumptions and portion estimate" },
+    price_sgd:   { type: SchemaType.NUMBER,  description: "Price in SGD if the user mentioned it in their description, otherwise 0" },
+    weight_g:    { type: SchemaType.INTEGER, description: "Estimated total serving weight in grams based on the portion visible" },
   },
-  required: ["calories", "protein_g", "carbs_g", "fat_g", "fibre_g", "sugar_g", "sat_fat_g", "sodium_mg", "confidence", "notes"],
+  required: ["calories", "protein_g", "carbs_g", "fat_g", "fibre_g", "sugar_g", "sat_fat_g", "sodium_mg", "confidence", "notes", "price_sgd", "weight_g"],
 };
 
 const NUTRITION_PROMPT = `You are a nutrition estimation assistant specialising in Singapore food.
 Given a photo of a meal and a text description of what was ordered, estimate the nutritional content.
-Base estimates on standard Singapore portion sizes. Lower confidence if the image is unclear.`;
+Base estimates on standard Singapore portion sizes. Lower confidence if the image is unclear.
+If the user mentions a price in their description, extract it as price_sgd. If not mentioned, use 0.
+Estimate the total serving weight in grams from the portion visible in the photo.`;
 
 export interface NutritionEstimate {
   calories: number;
@@ -37,6 +41,8 @@ export interface NutritionEstimate {
   sodium_mg: number;
   confidence: number;
   notes: string;
+  price_sgd: number;
+  weight_g: number;
 }
 
 export async function estimateNutrition(

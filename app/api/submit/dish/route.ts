@@ -46,6 +46,8 @@ export async function POST(req: NextRequest) {
       ai_sodium_mg: nutrition.sodium_mg,
       ai_confidence: nutrition.confidence,
       ai_notes: nutrition.notes,
+      ai_price_sgd: nutrition.price_sgd || null,
+      ai_weight_g: nutrition.weight_g || null,
       submitter_session_id: sessionId,
       image_processed: true,
       image_path: storedImagePath,

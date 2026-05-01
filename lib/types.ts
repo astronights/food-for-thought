@@ -27,6 +27,8 @@ export interface MenuItem {
   base_sugar_g: number | null;
   base_sat_fat_g: number | null;
   base_sodium_mg: number | null;
+  base_price_sgd: number | null;
+  base_weight_g: number | null;
   has_customisation: boolean;
   is_available: boolean;
   data_source: 'verified' | 'ai_estimate' | 'crowdsourced';
@@ -58,6 +60,7 @@ export interface CustomisationOption {
   sat_fat_delta_g: number;
   sodium_delta_mg: number;
   price_delta_sgd: number | null;
+  weight_delta_g: number;
   is_available: boolean;
   display_order: number;
 }

@@ -313,7 +313,7 @@ export function ContributeDishSheet({
                 >
                   <Camera className="h-8 w-8" />
                   <span className="text-sm font-medium">Take a photo or upload</span>
-                  <span className="text-xs">Photo is never stored — AI reads it and discards it</span>
+                  <span className="text-xs">Stored securely for admin review only — never shown publicly</span>
                 </button>
               )}
             </div>
@@ -326,7 +326,9 @@ export function ContributeDishSheet({
               <Textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder={hasCustomisation ? "e.g. Extra granola, no honey, large size" : "e.g. Large acai bowl with granola, banana, honey. No added sugar."}
+                placeholder={hasCustomisation
+                ? "e.g. Extra granola, no honey, large size. About 450g, paid $13.90."
+                : "e.g. Large acai bowl with granola, banana, honey. No added sugar. About 400g, paid $12.50."}
                 className="rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm min-h-[80px] resize-none"
               />
             </div>
