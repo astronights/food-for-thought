@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Restaurant name is required" }, { status: 400 });
     }
 
-    let extractedDishes = null;
+    let menuExtract = null;
     let aiNotes = null;
     let imageProcessed = false;
 
@@ -24,7 +24,8 @@ export async function POST(req: NextRequest) {
       const base64Image = buffer.toString("base64");
       const mimeType = image.type;
       const menuData = await readMenu(base64Image, mimeType);
-      extractedDishes = menuData.dishes;
+      // Store the full structured extract — the admin UI reads menu_type to decide how to display
+      menuExtract = menuData;
       aiNotes = menuData.notes;
       imageProcessed = true;
     }
@@ -33,14 +34,13 @@ export async function POST(req: NextRequest) {
       restaurant_name: restaurantName,
       location_description: locationDescription || null,
       cuisine_description: cuisineDescription || null,
-      ai_extracted_dishes: extractedDishes,
+      ai_extracted_dishes: menuExtract,
       ai_notes: aiNotes,
       submitter_session_id: sessionId,
       image_processed: imageProcessed,
     });
 
     if (error) throw error;
-
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("Restaurant submission error:", err);

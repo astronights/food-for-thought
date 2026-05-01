@@ -226,20 +226,61 @@ function RestaurantDetail({ sub, onUpdate }: { sub: RestaurantSubmission; onUpda
         <p className="text-sm text-gray-600 dark:text-gray-400"><span className="text-xs text-gray-400 font-medium">Cuisine: </span>{sub.cuisine_description}</p>
       )}
 
-      {sub.ai_extracted_dishes && sub.ai_extracted_dishes.length > 0 && (
-        <div>
-          <p className="text-xs font-medium text-gray-400 mb-2">AI-extracted dishes ({sub.ai_extracted_dishes.length})</p>
-          <div className="space-y-1 max-h-40 overflow-y-auto">
-            {sub.ai_extracted_dishes.map((d, i) => (
-              <div key={i} className="flex items-center justify-between text-sm">
-                <span className="text-gray-700 dark:text-gray-300">{d.name}</span>
-                {d.category && <span className="text-xs text-gray-400">{d.category}</span>}
+      {sub.ai_extracted_dishes && (() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const extract = sub.ai_extracted_dishes as any;
+        const isBYO = !Array.isArray(extract) && extract?.menu_type === "build_your_own";
+
+        if (isBYO) {
+          const groups = extract.customisation_groups ?? [];
+          return (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
+                  Build Your Own menu
+                </span>
+                {extract.base_price_sgd > 0 && (
+                  <span className="text-xs text-gray-400">Base price: ${extract.base_price_sgd}</span>
+                )}
               </div>
-            ))}
+              {extract.meal_structure && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 italic">"{extract.meal_structure}"</p>
+              )}
+              <div className="space-y-1 max-h-52 overflow-y-auto">
+                {groups.map((g: { name: string; ui_hint: string; max_selections: number; options: { name: string }[] }, i: number) => (
+                  <div key={i} className="text-xs">
+                    <span className="font-medium text-gray-600 dark:text-gray-400">
+                      {g.name}
+                    </span>
+                    <span className="text-gray-400 ml-1">
+                      ({g.ui_hint === "pick_one_required" ? "required, pick 1" : g.ui_hint === "pick_many" ? `pick up to ${g.max_selections || "∞"}` : "optional"})
+                      — {g.options?.length ?? 0} options
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400">Approval creates a "Build Your Own" menu item with all customisation groups and options.</p>
+            </div>
+          );
+        }
+
+        const dishes = Array.isArray(extract) ? extract : (extract?.dishes ?? []);
+        if (!dishes.length) return null;
+        return (
+          <div>
+            <p className="text-xs font-medium text-gray-400 mb-2">AI-extracted dishes ({dishes.length})</p>
+            <div className="space-y-1 max-h-40 overflow-y-auto">
+              {dishes.map((d: { name: string; category?: string }, i: number) => (
+                <div key={i} className="flex items-center justify-between text-sm">
+                  <span className="text-gray-700 dark:text-gray-300">{d.name}</span>
+                  {d.category && <span className="text-xs text-gray-400">{d.category}</span>}
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 mt-1">These will be created as Tier 3 dish stubs on approval.</p>
           </div>
-          <p className="text-xs text-gray-400 mt-1">These will be created as Tier 3 dish stubs on approval.</p>
-        </div>
-      )}
+        );
+      })()}
 
       <div>
         <label className="text-xs font-medium text-gray-400 mb-1 block">Admin notes</label>

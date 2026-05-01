@@ -52,18 +52,84 @@ export async function POST(req: NextRequest) {
     .eq("id", submission_id)
     .single();
 
-  const dishes = submission?.ai_extracted_dishes as { name: string; category: string | null }[] | null;
-  if (dishes && dishes.length > 0) {
-    const stubs = dishes.map((d, i) => ({
-      restaurant_id: restaurant.id,
-      name: d.name,
-      category: d.category ?? "Menu",
-      has_customisation: false,
-      is_available: true,
-      data_source: "crowdsourced" as const,
-      display_order: i,
-    }));
-    await getSupabaseAdmin().from("menu_items").insert(stubs);
+  // ai_extracted_dishes may be the full MenuExtract object or a legacy dishes array
+  const extract = submission?.ai_extracted_dishes as Record<string, unknown> | null;
+  const isBuildYourOwn =
+    extract && !Array.isArray(extract) && extract.menu_type === "build_your_own";
+
+  if (isBuildYourOwn) {
+    // Create a single customisable menu item then seed its groups + options
+    const { data: menuItem } = await getSupabaseAdmin()
+      .from("menu_items")
+      .insert({
+        restaurant_id: restaurant.id,
+        name: "Build Your Own",
+        description: extract.meal_structure as string || null,
+        category: "Customise",
+        base_calories: 0, base_protein_g: 0, base_carbs_g: 0,
+        base_fat_g: 0, base_fibre_g: 0, base_sugar_g: 0,
+        base_sat_fat_g: 0, base_sodium_mg: 0,
+        has_customisation: true,
+        is_available: true,
+        data_source: "crowdsourced",
+        display_order: 0,
+      })
+      .select()
+      .single();
+
+    if (menuItem) {
+      const groups = (extract.customisation_groups as {
+        name: string; ui_hint: string; max_selections: number;
+        options: { name: string; price_delta_sgd: number }[];
+      }[]) ?? [];
+
+      for (let gi = 0; gi < groups.length; gi++) {
+        const g = groups[gi];
+        const { data: group } = await getSupabaseAdmin()
+          .from("customisation_groups")
+          .insert({
+            menu_item_id: menuItem.id,
+            restaurant_id: restaurant.id,
+            name: g.name,
+            ui_hint: g.ui_hint,
+            min_selections: g.ui_hint === "pick_one_required" ? 1 : 0,
+            max_selections: g.max_selections || null,
+            display_order: gi,
+          })
+          .select()
+          .single();
+
+        if (group && g.options?.length) {
+          await getSupabaseAdmin().from("customisation_options").insert(
+            g.options.map((o, oi) => ({
+              group_id: group.id,
+              name: o.name,
+              price_delta_sgd: o.price_delta_sgd || null,
+              display_order: oi,
+            }))
+          );
+        }
+      }
+    }
+  } else {
+    // Regular menu — seed dish stubs
+    const dishes = Array.isArray(extract)
+      ? extract as { name: string; category: string | null }[]
+      : ((extract?.dishes as { name: string; category: string | null }[]) ?? []);
+
+    if (dishes.length > 0) {
+      await getSupabaseAdmin().from("menu_items").insert(
+        dishes.map((d, i) => ({
+          restaurant_id: restaurant.id,
+          name: d.name,
+          category: d.category ?? "Menu",
+          has_customisation: false,
+          is_available: true,
+          data_source: "crowdsourced" as const,
+          display_order: i,
+        }))
+      );
+    }
   }
 
   await getSupabaseAdmin()
@@ -71,5 +137,5 @@ export async function POST(req: NextRequest) {
     .update({ status: "approved", reviewed_at: new Date().toISOString() })
     .eq("id", submission_id);
 
-  return NextResponse.json({ success: true, restaurant });
+  return NextResponse.json({ success: true, restaurant, is_build_your_own: isBuildYourOwn });
 }
