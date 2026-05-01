@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import type { Restaurant } from "@/lib/types";
 import { HomeClient } from "@/components/home-client";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { InfoButton } from "@/components/info-sheet";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,10 @@ export default async function HomePage() {
               Nutrition for Singapore
             </p>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <InfoButton />
+            <ThemeToggle />
+          </div>
         </div>
       </div>
 
