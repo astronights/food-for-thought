@@ -20,7 +20,16 @@ export async function POST(req: NextRequest) {
     const base64Image = buffer.toString("base64");
     const mimeType = image.type;
 
-    const nutrition = await estimateNutrition(base64Image, mimeType, orderDescription);
+    // Run AI estimation and image upload in parallel
+    const ext = mimeType.split("/")[1] ?? "jpg";
+    const imagePath = `dish-submissions/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+    const [nutrition, uploadResult] = await Promise.all([
+      estimateNutrition(base64Image, mimeType, orderDescription),
+      getSupabaseAdmin().storage.from("submission-images").upload(imagePath, buffer, { contentType: mimeType }),
+    ]);
+
+    const storedImagePath = uploadResult.error ? null : imagePath;
 
     const { error } = await getSupabaseAdmin().from("crowdsource_submissions").insert({
       restaurant_id: restaurantId,
@@ -39,10 +48,10 @@ export async function POST(req: NextRequest) {
       ai_notes: nutrition.notes,
       submitter_session_id: sessionId,
       image_processed: true,
+      image_path: storedImagePath,
     });
 
     if (error) throw error;
-
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("Dish submission error:", err);

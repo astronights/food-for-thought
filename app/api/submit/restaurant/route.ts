@@ -17,17 +17,23 @@ export async function POST(req: NextRequest) {
 
     let menuExtract = null;
     let aiNotes = null;
-    let imageProcessed = false;
+    let storedImagePath: string | null = null;
 
     if (image && image.size > 0) {
       const buffer = Buffer.from(await image.arrayBuffer());
       const base64Image = buffer.toString("base64");
       const mimeType = image.type;
-      const menuData = await readMenu(base64Image, mimeType);
-      // Store the full structured extract — the admin UI reads menu_type to decide how to display
+      const ext = mimeType.split("/")[1] ?? "jpg";
+      const imagePath = `menus/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+      const [menuData, uploadResult] = await Promise.all([
+        readMenu(base64Image, mimeType),
+        getSupabaseAdmin().storage.from("submission-images").upload(imagePath, buffer, { contentType: mimeType }),
+      ]);
+
       menuExtract = menuData;
       aiNotes = menuData.notes;
-      imageProcessed = true;
+      storedImagePath = uploadResult.error ? null : imagePath;
     }
 
     const { error } = await getSupabaseAdmin().from("restaurant_submissions").insert({
@@ -37,7 +43,8 @@ export async function POST(req: NextRequest) {
       ai_extracted_dishes: menuExtract,
       ai_notes: aiNotes,
       submitter_session_id: sessionId,
-      image_processed: imageProcessed,
+      image_processed: !!menuExtract,
+      image_path: storedImagePath,
     });
 
     if (error) throw error;

@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { submission_id, name, slug, cuisine_tags, location_tags, tier } = body;
+  const { submission_id, name, slug, cuisine_tags, location_tags, tier, edited_dishes } = body;
 
   const { data: restaurant, error: rErr } = await getSupabaseAdmin()
     .from("restaurants")
@@ -113,9 +113,12 @@ export async function POST(req: NextRequest) {
     }
   } else {
     // Regular menu — seed dish stubs
-    const dishes = Array.isArray(extract)
-      ? extract as { name: string; category: string | null }[]
-      : ((extract?.dishes as { name: string; category: string | null }[]) ?? []);
+    // Prefer admin-edited dish list if provided, otherwise fall back to AI extract
+    const dishes: { name: string; category: string | null }[] = edited_dishes?.length
+      ? edited_dishes
+      : Array.isArray(extract)
+        ? extract
+        : ((extract?.dishes as { name: string; category: string | null }[]) ?? []);
 
     if (dishes.length > 0) {
       await getSupabaseAdmin().from("menu_items").insert(
