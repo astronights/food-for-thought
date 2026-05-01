@@ -4,7 +4,7 @@ import { HomeClient } from "@/components/home-client";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { InfoButton } from "@/components/info-sheet";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
 
 async function getRestaurants(): Promise<Restaurant[]> {
   const { data, error } = await supabase

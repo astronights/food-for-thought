@@ -9,9 +9,31 @@ const spaceGrotesk = Space_Grotesk({
   weight: ["300", "400", "500", "600", "700"],
 });
 
+const BASE_URL = "https://food-for-thought-kappa.vercel.app";
+
 export const metadata: Metadata = {
-  title: "Food for Thought",
-  description: "Look up nutrition info for your favourite Singapore restaurants — no sign-up required.",
+  metadataBase: new URL(BASE_URL),
+  title: {
+    default: "Food for Thought — Singapore Restaurant Nutrition",
+    template: "%s | Food for Thought",
+  },
+  description:
+    "Look up calorie and nutrition info for Singapore restaurants. Build your meal and see live nutrition totals — no sign-up needed.",
+  keywords: ["Singapore nutrition", "restaurant calories Singapore", "healthy eating Singapore", "meal nutrition calculator"],
+  openGraph: {
+    type: "website",
+    siteName: "Food for Thought",
+    title: "Food for Thought — Singapore Restaurant Nutrition",
+    description:
+      "Look up calorie and nutrition info for Singapore restaurants. Build your meal and see live nutrition totals — no sign-up needed.",
+    url: BASE_URL,
+  },
+  twitter: {
+    card: "summary",
+    title: "Food for Thought — Singapore Restaurant Nutrition",
+    description: "Look up calorie and nutrition info for Singapore restaurants. No sign-up needed.",
+  },
+  robots: { index: true, follow: true },
 };
 
 export default function RootLayout({
