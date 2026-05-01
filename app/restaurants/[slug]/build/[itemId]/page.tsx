@@ -25,10 +25,12 @@ async function getBuilderData(slug: string, itemId: string): Promise<{
 
   if (!item) return null;
 
+  // Fetch item-specific groups AND restaurant-wide groups (menu_item_id = null)
   const { data: groups } = await supabase
     .from("customisation_groups")
     .select("*")
-    .eq("menu_item_id", itemId)
+    .eq("restaurant_id", restaurant.id)
+    .or(`menu_item_id.eq.${itemId},menu_item_id.is.null`)
     .order("display_order", { ascending: true });
 
   if (!groups || groups.length === 0) return { restaurant, item, groups: [] };

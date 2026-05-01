@@ -164,7 +164,8 @@ export function ContributeDishSheet({
     supabase
       .from("customisation_groups")
       .select("*, customisation_options(*)")
-      .eq("menu_item_id", menuItemId)
+      .eq("restaurant_id", restaurantId)
+      .or(`menu_item_id.eq.${menuItemId},menu_item_id.is.null`)
       .order("display_order")
       .then(({ data }) => {
         if (data) {
