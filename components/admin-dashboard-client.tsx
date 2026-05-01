@@ -23,9 +23,18 @@ async function adminFetch(url: string, options: RequestInit = {}) {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface RuleSuggestion {
+  group_name: string;
+  field: string;
+  current_value: number;
+  suggested_value: number;
+  reason: string;
+}
+
 interface DishSubmission {
   id: string;
   is_correction_flag: boolean;
+  ai_group_suggestions: RuleSuggestion[] | null;
   restaurants: { name: string; slug: string } | null;
   dish_name_raw: string;
   order_description: string;
@@ -182,6 +191,24 @@ function DishDetail({ sub, onUpdate }: { sub: DishSubmission; onUpdate: () => vo
         <div>
           <p className="text-xs font-medium text-gray-400 mb-1">AI notes</p>
           <p className="text-sm text-gray-500 dark:text-gray-400 italic">{sub.ai_notes}</p>
+        </div>
+      )}
+
+      {/* Rule suggestions for correction flags */}
+      {sub.is_correction_flag && sub.ai_group_suggestions && sub.ai_group_suggestions.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-gray-400">Suggested rule changes</p>
+          {sub.ai_group_suggestions.map((s, i) => (
+            <div key={i} className="rounded-xl border border-amber-100 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs space-y-0.5">
+              <p className="font-medium text-amber-800 dark:text-amber-300">
+                &quot;{s.group_name}&quot; — {s.field}: {s.current_value === -1 ? "unlimited" : s.current_value} → {s.suggested_value === -1 ? "unlimited" : s.suggested_value}
+              </p>
+              <p className="text-amber-600/80 dark:text-amber-500">{s.reason}</p>
+              <p className="text-gray-400 font-mono mt-1 select-all">
+                update customisation_groups set {s.field} = {s.suggested_value === -1 ? "null" : s.suggested_value} where name = &apos;{s.group_name}&apos;;
+              </p>
+            </div>
+          ))}
         </div>
       )}
 

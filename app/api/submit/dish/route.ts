@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { estimateNutrition, estimateNutritionFromText } from "@/lib/gemini";
+import { estimateNutrition, estimateNutritionFromText, type GroupContext } from "@/lib/gemini";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 
 export async function POST(req: NextRequest) {
@@ -19,7 +19,18 @@ export async function POST(req: NextRequest) {
 
     // ── Correction flag: text-only Gemini extraction, no image ───────────────
     if (isCorrectionFlag) {
-      const nutrition = await estimateNutritionFromText(orderDescription);
+      // Fetch current group rules to give Gemini context for rule suggestions
+      let groups: GroupContext[] = [];
+      if (menuItemId) {
+        const [{ data: itemGroups }, { data: restaurantGroups }] = await Promise.all([
+          getSupabaseAdmin().from("customisation_groups").select("name,ui_hint,min_selections,max_selections").eq("menu_item_id", menuItemId),
+          getSupabaseAdmin().from("customisation_groups").select("name,ui_hint,min_selections,max_selections")
+            .eq("restaurant_id", restaurantId).is("menu_item_id", null),
+        ]);
+        groups = [...(itemGroups ?? []), ...(restaurantGroups ?? [])] as GroupContext[];
+      }
+
+      const nutrition = await estimateNutritionFromText(orderDescription, groups);
       const { error } = await getSupabaseAdmin().from("crowdsource_submissions").insert({
         restaurant_id: restaurantId,
         menu_item_id: menuItemId || null,
@@ -37,6 +48,7 @@ export async function POST(req: NextRequest) {
         ai_notes: nutrition.notes,
         ai_price_sgd: nutrition.price_sgd || null,
         ai_weight_g: nutrition.weight_g || null,
+        ai_group_suggestions: nutrition.rule_suggestions?.length ? nutrition.rule_suggestions : null,
         is_correction_flag: true,
         image_processed: false,
         submitter_session_id: sessionId,

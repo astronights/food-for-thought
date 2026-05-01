@@ -30,6 +30,14 @@ Base estimates on standard Singapore portion sizes. Lower confidence if the imag
 If the user mentions a price in their description, extract it as price_sgd. If not mentioned, use 0.
 Estimate the total serving weight in grams from the portion visible in the photo.`;
 
+export interface RuleSuggestion {
+  group_name: string;
+  field: "min_selections" | "max_selections";
+  current_value: number;   // -1 = currently null/unlimited
+  suggested_value: number; // -1 = suggest unlimited
+  reason: string;
+}
+
 export interface NutritionEstimate {
   calories: number;
   protein_g: number;
@@ -43,26 +51,67 @@ export interface NutritionEstimate {
   notes: string;
   price_sgd: number;
   weight_g: number;
+  rule_suggestions: RuleSuggestion[];
+}
+
+// Separate schema for text-only correction flags — includes rule_suggestions
+const TEXT_ESTIMATION_SCHEMA: Schema = {
+  type: SchemaType.OBJECT,
+  properties: {
+    ...NUTRITION_SCHEMA.properties,
+    rule_suggestions: {
+      type: SchemaType.ARRAY,
+      description: "Suggested changes to customisation group rules based on user's description. Empty array if nothing needs changing.",
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          group_name:      { type: SchemaType.STRING,  description: "Name of the customisation group to change" },
+          field:           { type: SchemaType.STRING,  description: "Which field: min_selections or max_selections" },
+          current_value:   { type: SchemaType.INTEGER, description: "Current value (-1 if currently null/unlimited)" },
+          suggested_value: { type: SchemaType.INTEGER, description: "Suggested new value (-1 to suggest unlimited)" },
+          reason:          { type: SchemaType.STRING,  description: "Why this change is implied by the user's text" },
+        },
+        required: ["group_name", "field", "current_value", "suggested_value", "reason"],
+      },
+    },
+  },
+  required: [...(NUTRITION_SCHEMA.required ?? []), "rule_suggestions"],
+};
+
+export interface GroupContext {
+  name: string;
+  ui_hint: string;
+  min_selections: number;
+  max_selections: number | null;
 }
 
 export async function estimateNutritionFromText(
-  flagDescription: string
+  flagDescription: string,
+  groups?: GroupContext[]
 ): Promise<NutritionEstimate> {
   const model = genAI.getGenerativeModel({
     model: MODEL,
-    generationConfig: { responseMimeType: "application/json", responseSchema: NUTRITION_SCHEMA },
+    generationConfig: { responseMimeType: "application/json", responseSchema: TEXT_ESTIMATION_SCHEMA },
   });
+
+  const groupContext = groups && groups.length > 0
+    ? `\n\nCurrent customisation rules for this item:\n${groups
+        .map((g) => `- "${g.name}": min ${g.min_selections}, max ${g.max_selections ?? "unlimited"} (${g.ui_hint})`)
+        .join("\n")}\n\nIf the user's text implies any rule is wrong (e.g. they picked more items than the max allows, or a required group turned out to be optional), add an entry to rule_suggestions.`
+    : "\n\nNo customisation group context available — leave rule_suggestions empty.";
+
   const result = await model.generateContent([
     {
       text: `You are a nutrition estimation assistant for Singapore restaurant dishes.
 
 A user has flagged a potential issue with verified nutrition data. Based solely on their text description, estimate what the correct nutrition values should be.
 
-Rules:
+Rules for nutrition:
 - If they mention specific numbers, use those directly
-- If they describe the dish qualitatively (e.g. "it felt heavier", "the portion was huge"), estimate accordingly
+- If they describe the dish qualitatively, estimate accordingly
 - Set confidence between 0.2 and 0.5 — this is text-only, no photo
 - In notes, explain which parts of their text you relied on
+${groupContext}
 
 User flag: ${flagDescription}`,
     },
