@@ -25,15 +25,23 @@ async function getBuilderData(slug: string, itemId: string): Promise<{
 
   if (!item) return null;
 
-  // Fetch item-specific groups AND restaurant-wide groups (menu_item_id = null)
-  const { data: groups } = await supabase
-    .from("customisation_groups")
-    .select("*")
-    .eq("restaurant_id", restaurant.id)
-    .or(`menu_item_id.eq.${itemId},menu_item_id.is.null`)
-    .order("display_order", { ascending: true });
+  // Two explicit queries — avoids PostgREST .or() + IS NULL unreliability
+  const [{ data: itemGroups }, { data: restaurantGroups }] = await Promise.all([
+    supabase.from("customisation_groups").select("*")
+      .eq("menu_item_id", itemId)
+      .order("display_order", { ascending: true }),
+    supabase.from("customisation_groups").select("*")
+      .eq("restaurant_id", restaurant.id)
+      .is("menu_item_id", null)
+      .order("display_order", { ascending: true }),
+  ]);
 
-  if (!groups || groups.length === 0) return { restaurant, item, groups: [] };
+  const groups = [
+    ...(itemGroups ?? []),
+    ...(restaurantGroups ?? []),
+  ].sort((a, b) => a.display_order - b.display_order);
+
+  if (groups.length === 0) return { restaurant, item, groups: [] };
 
   const groupIds = groups.map((g) => g.id);
   const { data: options } = await supabase

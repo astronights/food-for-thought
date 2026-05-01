@@ -161,12 +161,20 @@ export function ContributeDishSheet({
   useEffect(() => {
     if (!open || !hasCustomisation || !menuItemId) return;
     setLoadingGroups(true);
-    supabase
-      .from("customisation_groups")
-      .select("*, customisation_options(*)")
-      .eq("restaurant_id", restaurantId)
-      .or(`menu_item_id.eq.${menuItemId},menu_item_id.is.null`)
-      .order("display_order")
+    Promise.all([
+      supabase.from("customisation_groups").select("*, customisation_options(*)")
+        .eq("menu_item_id", menuItemId)
+        .order("display_order"),
+      supabase.from("customisation_groups").select("*, customisation_options(*)")
+        .eq("restaurant_id", restaurantId)
+        .is("menu_item_id", null)
+        .order("display_order"),
+    ]).then(([{ data: itemGroups }, { data: restaurantGroups }]) => {
+      const data = [
+        ...(itemGroups ?? []),
+        ...(restaurantGroups ?? []),
+      ].sort((a, b) => a.display_order - b.display_order);
+      return { data }; })
       .then(({ data }) => {
         if (data) {
           setGroups(
