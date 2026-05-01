@@ -3,7 +3,7 @@ import { GoogleGenerativeAI, SchemaType, type Schema } from "@google/generative-
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
-const MODEL = "gemini-3.1-flash-lite-preview";
+const MODEL = "gemini-2.5-flash-lite";
 
 // ─── Nutrition estimation ─────────────────────────────────────────────────────
 

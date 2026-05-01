@@ -184,7 +184,7 @@ export function RestaurantPageClient({ restaurant, menu }: RestaurantPageClientP
         ) : (
           <>
             {/* Buildable items */}
-            {buildableItems.length > 0 && !isContributing && (
+            {buildableItems.length > 0 && (
               <section>
                 <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3 px-1">Build Your Meal</h2>
                 <div className="space-y-3">
