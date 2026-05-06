@@ -119,9 +119,13 @@ User flag: ${flagDescription}`,
   return JSON.parse(result.response.text()) as NutritionEstimate;
 }
 
+export interface ImageInput {
+  base64: string;
+  mimeType: string;
+}
+
 export async function estimateNutrition(
-  base64Image: string,
-  mimeType: string,
+  images: ImageInput[],
   orderDescription: string
 ): Promise<NutritionEstimate> {
   const model = genAI.getGenerativeModel({
@@ -129,7 +133,7 @@ export async function estimateNutrition(
     generationConfig: { responseMimeType: "application/json", responseSchema: NUTRITION_SCHEMA },
   });
   const result = await model.generateContent([
-    { inlineData: { data: base64Image, mimeType } },
+    ...images.map((img) => ({ inlineData: { data: img.base64, mimeType: img.mimeType } })),
     { text: `${NUTRITION_PROMPT}\n\nOrder description: ${orderDescription}` },
   ]);
   return JSON.parse(result.response.text()) as NutritionEstimate;
@@ -210,26 +214,35 @@ const MENU_SCHEMA: Schema = {
   required: ["restaurant_name", "menu_type", "meal_structure", "base_price_sgd", "dishes", "customisation_groups", "notes"],
 };
 
-const MENU_PROMPT = `You are reading a restaurant menu image. Analyse the menu structure carefully before extracting data.
+const MENU_PROMPT = `You are extracting structured data from a restaurant menu image. If multiple images are provided, they show different parts of the same menu — read all of them together.
 
-CRITICAL: Many Singapore restaurants — especially salad, bowl, and healthy food places — use a BUILD YOUR OWN format:
-the customer picks components from several categories (e.g. base, protein, sides, garnish, sauce) at a single set price.
-This is NOT a list of individual dishes. Detect this pattern by looking for:
-- Component categories listed as columns or sections (Base / Protein / Sides / Sauce etc.)
-- A single price shown for the whole meal
-- A selection formula like "1 protein + 3 sides" shown at the top
+STEP 1 — Identify the menu type:
+- FIXED: individual dishes each with a name and price. The most common format.
+- BUILD YOUR OWN (BYO): customer assembles a meal by picking from ingredient categories (Base / Protein / Sides / Sauce etc.) at one set price. Signs: category columns, a single base price, or a formula like "1 protein + 3 sides".
+- MIXED: has both fixed dishes and a BYO section.
+
+STEP 2 — Extract accordingly:
+
+For FIXED menus (most restaurants):
+  - Set menu_type to "fixed", leave customisation_groups empty.
+  - Fill "dishes" with EVERY item visible — name, menu category/section, and price.
+  - Read carefully even if text is small. Extract every item you can identify.
+  - Do not skip items because they are in a sub-section or written in a different style.
 
 For BUILD YOUR OWN menus:
-- Set menu_type to "build_your_own"
-- Set meal_structure to the formula shown (e.g. "1 protein + 3 sides + garnish + sauce")
-- Set base_price_sgd to the base meal price
-- Fill customisation_groups — one group per category, with the correct ui_hint and max_selections derived from the meal formula
-- Leave dishes empty unless there are standalone add-ons with their own distinct price
+  - Set menu_type to "build_your_own".
+  - Set meal_structure to the formula shown (e.g. "1 protein + 3 sides + sauce").
+  - Set base_price_sgd to the stated base meal price.
+  - Fill customisation_groups — one group per ingredient category.
+  - Leave dishes empty unless there are standalone add-ons with their own distinct price.
 
-For REGULAR menus with individual dishes:
-- Set menu_type to "fixed"
-- Fill dishes with each orderable item and its price
-- Leave customisation_groups empty`;
+For MIXED menus:
+  - Fill both "dishes" (for fixed items) and "customisation_groups" (for the BYO section).
+
+ui_hint rules for groups:
+  pick_one_required = must choose exactly 1 (e.g. base style, wrap type, protein).
+  pick_many = can choose multiple (e.g. sides, toppings, add-ons).
+  pick_one = optional single choice (e.g. sauce if it appears optional).`;
 
 export interface CustomisationGroupExtract {
   name: string;
@@ -249,15 +262,14 @@ export interface MenuExtract {
 }
 
 export async function readMenu(
-  base64Image: string,
-  mimeType: string
+  images: ImageInput[]
 ): Promise<MenuExtract> {
   const model = genAI.getGenerativeModel({
     model: MODEL,
     generationConfig: { responseMimeType: "application/json", responseSchema: MENU_SCHEMA },
   });
   const result = await model.generateContent([
-    { inlineData: { data: base64Image, mimeType } },
+    ...images.map((img) => ({ inlineData: { data: img.base64, mimeType: img.mimeType } })),
     { text: MENU_PROMPT },
   ]);
   return JSON.parse(result.response.text()) as MenuExtract;

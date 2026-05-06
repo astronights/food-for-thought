@@ -5,7 +5,6 @@ import { getSupabaseAdmin } from "@/lib/supabase-admin";
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
-    const image = formData.get("image") as File | null;
     const orderDescription = formData.get("order_description") as string;
     const dishName = formData.get("dish_name") as string;
     const restaurantId = formData.get("restaurant_id") as string;
@@ -57,24 +56,36 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
-    // ── Full nutrition submission: image required ──────────────────────────────
-    if (!image || image.size === 0) {
-      return NextResponse.json({ error: "Image is required" }, { status: 400 });
+    // ── Full nutrition submission: at least one image required ────────────────
+    const imageFiles = formData.getAll("images") as File[];
+    const validImages = imageFiles.filter((f) => f && f.size > 0).slice(0, 3);
+
+    if (validImages.length === 0) {
+      return NextResponse.json({ error: "At least one image is required" }, { status: 400 });
     }
 
-    const buffer = Buffer.from(await image.arrayBuffer());
-    const base64Image = buffer.toString("base64");
-    const mimeType = image.type;
+    const processed = await Promise.all(
+      validImages.map(async (file) => {
+        const buf = Buffer.from(await file.arrayBuffer());
+        const ext = file.type.split("/")[1] ?? "jpg";
+        const path = `dish-submissions/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+        return { buf, mimeType: file.type, base64: buf.toString("base64"), path };
+      })
+    );
 
-    const ext = mimeType.split("/")[1] ?? "jpg";
-    const imagePath = `dish-submissions/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-
-    const [nutrition, uploadResult] = await Promise.all([
-      estimateNutrition(base64Image, mimeType, orderDescription),
-      getSupabaseAdmin().storage.from("submission-images").upload(imagePath, buffer, { contentType: mimeType }),
+    const [nutrition, ...uploadResults] = await Promise.all([
+      estimateNutrition(
+        processed.map((p) => ({ base64: p.base64, mimeType: p.mimeType })),
+        orderDescription
+      ),
+      ...processed.map((p) =>
+        getSupabaseAdmin().storage.from("submission-images").upload(p.path, p.buf, { contentType: p.mimeType })
+      ),
     ]);
 
-    const storedImagePath = uploadResult.error ? null : imagePath;
+    const storedPaths = uploadResults
+      .map((r, i) => (r.error ? null : processed[i].path))
+      .filter(Boolean) as string[];
 
     const { error } = await getSupabaseAdmin().from("crowdsource_submissions").insert({
       restaurant_id: restaurantId,
@@ -96,7 +107,8 @@ export async function POST(req: NextRequest) {
       is_correction_flag: false,
       submitter_session_id: sessionId,
       image_processed: true,
-      image_path: storedImagePath,
+      image_path: storedPaths[0] ?? null,
+      image_paths: storedPaths,
     });
 
     if (error) throw error;

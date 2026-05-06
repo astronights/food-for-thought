@@ -263,7 +263,7 @@ interface EditableOption { name: string; price_delta_sgd: number }
 interface EditableGroup {
   name: string;
   ui_hint: "pick_one_required" | "pick_one" | "pick_many";
-  max_selections: number;
+  max_selections: number | null;
   options: EditableOption[];
 }
 
@@ -306,12 +306,19 @@ function RestaurantDetail({ sub, onUpdate }: { sub: RestaurantSubmission; onUpda
   function addDish() { setDishes((p) => [...p, { name: "", category: "Menu" }]); }
 
   // ── Group helpers ──
-  function updateGroup(gi: number, field: keyof Omit<EditableGroup, "options">, val: string | number) {
-    setGroups((p) => p.map((g, i) => i === gi ? { ...g, [field]: val } : g));
+  function updateGroup(gi: number, field: keyof Omit<EditableGroup, "options">, val: string | number | null) {
+    setGroups((p) => p.map((g, i) => {
+      if (i !== gi) return g;
+      const updated = { ...g, [field]: val };
+      // Switching to pick_many → unlimited (null); switching to pick_one → exactly 1
+      if (field === "ui_hint" && val === "pick_many") updated.max_selections = null;
+      if (field === "ui_hint" && val !== "pick_many") updated.max_selections = 1;
+      return updated;
+    }));
   }
   function removeGroup(gi: number) { setGroups((p) => p.filter((_, i) => i !== gi)); }
   function addGroup() {
-    setGroups((p) => [...p, { name: "New group", ui_hint: "pick_many", max_selections: 0, options: [] }]);
+    setGroups((p) => [...p, { name: "New group", ui_hint: "pick_many", max_selections: null, options: [] }]);
   }
 
   // ── Option helpers ──
@@ -403,16 +410,28 @@ function RestaurantDetail({ sub, onUpdate }: { sub: RestaurantSubmission; onUpda
                 <div className="flex items-center gap-1.5">
                   <input value={g.name} onChange={(e) => updateGroup(gi, "name", e.target.value)}
                     className={`${inputCls} flex-1`} placeholder="Group name" />
-                  <select value={g.ui_hint} onChange={(e) => updateGroup(gi, "ui_hint", e.target.value as EditableGroup["ui_hint"])}
-                    className={`${inputCls} w-28`}>
-                    <option value="pick_one_required">1 required</option>
-                    <option value="pick_one">1 optional</option>
-                    <option value="pick_many">pick many</option>
-                  </select>
-                  {g.ui_hint === "pick_many" && (
-                    <input type="number" value={g.max_selections || ""}
-                      onChange={(e) => updateGroup(gi, "max_selections", Number(e.target.value))}
-                      placeholder="max" className={`${inputCls} w-12`} />
+                  {/* One / Many toggle */}
+                  <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden text-xs flex-shrink-0">
+                    <button
+                      onClick={() => updateGroup(gi, "ui_hint", "pick_one_required")}
+                      className={`px-2 py-1 transition-colors ${g.ui_hint !== "pick_many" ? "bg-emerald-500 text-white" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"}`}
+                    >One</button>
+                    <button
+                      onClick={() => updateGroup(gi, "ui_hint", "pick_many")}
+                      className={`px-2 py-1 transition-colors ${g.ui_hint === "pick_many" ? "bg-emerald-500 text-white" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"}`}
+                    >Many</button>
+                  </div>
+                  {/* Required toggle — only visible for pick_one */}
+                  {g.ui_hint !== "pick_many" && (
+                    <label className="flex items-center gap-0.5 text-xs text-gray-500 cursor-pointer flex-shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={g.ui_hint === "pick_one_required"}
+                        onChange={(e) => updateGroup(gi, "ui_hint", e.target.checked ? "pick_one_required" : "pick_one")}
+                        className="rounded"
+                      />
+                      req
+                    </label>
                   )}
                   <button onClick={() => removeGroup(gi)} className="text-gray-300 dark:text-gray-600 hover:text-red-400 flex-shrink-0">
                     <Trash2 className="h-3.5 w-3.5" />

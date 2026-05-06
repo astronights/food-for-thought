@@ -24,14 +24,24 @@ export function ContributeRestaurantSheet({ open, onClose }: ContributeRestauran
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
   const [cuisine, setCuisine] = useState("");
-  const [image, setImage] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [images, setImages] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const fileRef = useRef<HTMLInputElement>(null);
+  const MAX_IMAGES = 3;
 
-  function handleImage(file: File) {
-    setImage(file);
-    setPreview(URL.createObjectURL(file));
+  function handleImages(files: FileList | null) {
+    if (!files) return;
+    const incoming = Array.from(files).slice(0, MAX_IMAGES - images.length);
+    const newImages = [...images, ...incoming].slice(0, MAX_IMAGES);
+    setImages(newImages);
+    setPreviews(newImages.map((f) => URL.createObjectURL(f)));
+  }
+
+  function removeImage(idx: number) {
+    const newImages = images.filter((_, i) => i !== idx);
+    setImages(newImages);
+    setPreviews(newImages.map((f) => URL.createObjectURL(f)));
   }
 
   async function handleSubmit() {
@@ -42,7 +52,7 @@ export function ContributeRestaurantSheet({ open, onClose }: ContributeRestauran
       fd.append("restaurant_name", name);
       fd.append("location_description", location);
       fd.append("cuisine_description", cuisine);
-      if (image) fd.append("image", image);
+      images.forEach((img) => fd.append("images", img));
       fd.append("session_id", getSessionId());
 
       const res = await fetch("/api/submit/restaurant", { method: "POST", body: fd });
@@ -55,7 +65,7 @@ export function ContributeRestaurantSheet({ open, onClose }: ContributeRestauran
 
   function handleClose() {
     setName(""); setLocation(""); setCuisine("");
-    setImage(null); setPreview(null); setStatus("idle");
+    setImages([]); setPreviews([]); setStatus("idle");
     onClose();
   }
 
@@ -110,29 +120,40 @@ export function ContributeRestaurantSheet({ open, onClose }: ContributeRestauran
               />
             </div>
 
-            {/* Optional menu photo */}
+            {/* Optional menu photos */}
             <div>
               <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 block">
-                Menu photo <span className="text-gray-400">(optional — helps us extract dish names)</span>
+                Menu photos <span className="text-gray-400">(optional — up to {MAX_IMAGES}, helps us extract dish names)</span>
               </label>
               <input
                 ref={fileRef}
                 type="file"
                 accept="image/*"
-                capture="environment"
+                multiple
                 className="hidden"
-                onChange={(e) => e.target.files?.[0] && handleImage(e.target.files[0])}
+                onChange={(e) => handleImages(e.target.files)}
               />
-              {preview ? (
-                <div className="relative rounded-xl overflow-hidden aspect-video bg-gray-100 dark:bg-gray-800">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={preview} alt="Preview" className="w-full h-full object-cover" />
-                  <button
-                    onClick={() => fileRef.current?.click()}
-                    className="absolute bottom-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded-lg"
-                  >
-                    Change
-                  </button>
+              {previews.length > 0 ? (
+                <div className="flex gap-2">
+                  {previews.map((src, idx) => (
+                    <div key={idx} className="relative rounded-xl overflow-hidden flex-1 aspect-square bg-gray-100 dark:bg-gray-800">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={src} alt={`Photo ${idx + 1}`} className="w-full h-full object-cover" />
+                      <button
+                        onClick={() => removeImage(idx)}
+                        className="absolute top-1 right-1 bg-black/50 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs leading-none"
+                      >×</button>
+                    </div>
+                  ))}
+                  {previews.length < MAX_IMAGES && (
+                    <button
+                      onClick={() => fileRef.current?.click()}
+                      className="flex-1 aspect-square rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-emerald-400 hover:text-emerald-500 transition-colors"
+                    >
+                      <ImagePlus className="h-5 w-5" />
+                      <span className="text-xs">Add</span>
+                    </button>
+                  )}
                 </div>
               ) : (
                 <button
@@ -140,7 +161,7 @@ export function ContributeRestaurantSheet({ open, onClose }: ContributeRestauran
                   className="w-full py-4 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 flex items-center justify-center gap-2 text-gray-400 hover:border-emerald-400 hover:text-emerald-500 transition-colors"
                 >
                   <ImagePlus className="h-5 w-5" />
-                  <span className="text-sm">Add menu photo</span>
+                  <span className="text-sm">Add menu photo(s)</span>
                 </button>
               )}
             </div>
@@ -154,7 +175,7 @@ export function ContributeRestaurantSheet({ open, onClose }: ContributeRestauran
               disabled={!name.trim() || status === "loading"}
               className="w-full py-3 rounded-xl bg-emerald-600 text-white text-sm font-semibold disabled:opacity-40 transition-opacity"
             >
-              {status === "loading" ? (image ? "Reading menu…" : "Submitting…") : "Submit suggestion"}
+              {status === "loading" ? (images.length > 0 ? "Reading menu…" : "Submitting…") : "Submit suggestion"}
             </button>
           </div>
         )}

@@ -149,13 +149,14 @@ export function ContributeDishSheet({
 }: ContributeDishSheetProps) {
   const [name, setName] = useState(dishName);
   const [description, setDescription] = useState("");
-  const [image, setImage] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [images, setImages] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [groups, setGroups] = useState<GroupWithOptions[]>([]);
   const [selections, setSelections] = useState<Selections>({});
   const [loadingGroups, setLoadingGroups] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const MAX_IMAGES = 3;
 
   // Fetch customisation groups when sheet opens for a customisable item
   useEffect(() => {
@@ -194,13 +195,22 @@ export function ContributeDishSheet({
     setSelections((prev) => ({ ...prev, [groupId]: value }));
   }
 
-  function handleImage(file: File) {
-    setImage(file);
-    setPreview(URL.createObjectURL(file));
+  function handleImages(files: FileList | null) {
+    if (!files) return;
+    const incoming = Array.from(files).slice(0, MAX_IMAGES - images.length);
+    const newImages = [...images, ...incoming].slice(0, MAX_IMAGES);
+    setImages(newImages);
+    setPreviews(newImages.map((f) => URL.createObjectURL(f)));
+  }
+
+  function removeImage(idx: number) {
+    const newImages = images.filter((_, i) => i !== idx);
+    setImages(newImages);
+    setPreviews(newImages.map((f) => URL.createObjectURL(f)));
   }
 
   async function handleSubmit() {
-    if (!image || !description.trim()) return;
+    if (images.length === 0 || !description.trim()) return;
     setStatus("loading");
 
     const selectionSummary = hasCustomisation
@@ -212,7 +222,7 @@ export function ContributeDishSheet({
 
     try {
       const fd = new FormData();
-      fd.append("image", image);
+      images.forEach((img) => fd.append("images", img));
       fd.append("dish_name", name);
       fd.append("order_description", fullDescription);
       fd.append("restaurant_id", restaurantId);
@@ -230,8 +240,8 @@ export function ContributeDishSheet({
   function handleClose() {
     setName(dishName);
     setDescription("");
-    setImage(null);
-    setPreview(null);
+    setImages([]);
+    setPreviews([]);
     setStatus("idle");
     setSelections({});
     setGroups([]);
@@ -294,26 +304,41 @@ export function ContributeDishSheet({
             {/* Photo upload */}
             <div>
               <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 block">
-                Photo of your meal <span className="text-red-400">*</span>
+                Photo(s) of your meal <span className="text-red-400">*</span>
+                <span className="text-gray-400 font-normal"> — up to {MAX_IMAGES}</span>
               </label>
               <input
                 ref={fileRef}
                 type="file"
                 accept="image/*"
-                capture="environment"
+                multiple
                 className="hidden"
-                onChange={(e) => e.target.files?.[0] && handleImage(e.target.files[0])}
+                onChange={(e) => handleImages(e.target.files)}
               />
-              {preview ? (
-                <div className="relative rounded-xl overflow-hidden aspect-video bg-gray-100 dark:bg-gray-800">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={preview} alt="Preview" className="w-full h-full object-cover" />
-                  <button
-                    onClick={() => fileRef.current?.click()}
-                    className="absolute bottom-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded-lg"
-                  >
-                    Change
-                  </button>
+              {previews.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    {previews.map((src, idx) => (
+                      <div key={idx} className="relative rounded-xl overflow-hidden flex-1 aspect-square bg-gray-100 dark:bg-gray-800">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={src} alt={`Photo ${idx + 1}`} className="w-full h-full object-cover" />
+                        <button
+                          onClick={() => removeImage(idx)}
+                          className="absolute top-1 right-1 bg-black/50 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs leading-none"
+                        >×</button>
+                      </div>
+                    ))}
+                    {previews.length < MAX_IMAGES && (
+                      <button
+                        onClick={() => fileRef.current?.click()}
+                        className="flex-1 aspect-square rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-emerald-400 hover:text-emerald-500 transition-colors"
+                      >
+                        <Camera className="h-5 w-5" />
+                        <span className="text-xs">Add</span>
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400">Stored securely for admin review only — never shown publicly</p>
                 </div>
               ) : (
                 <button
@@ -322,7 +347,7 @@ export function ContributeDishSheet({
                 >
                   <Camera className="h-8 w-8" />
                   <span className="text-sm font-medium">Take a photo or upload</span>
-                  <span className="text-xs">Stored securely for admin review only — never shown publicly</span>
+                  <span className="text-xs">Add up to {MAX_IMAGES} photos · Stored securely for admin review only</span>
                 </button>
               )}
             </div>
@@ -348,7 +373,7 @@ export function ContributeDishSheet({
 
             <button
               onClick={handleSubmit}
-              disabled={!image || !description.trim() || status === "loading"}
+              disabled={images.length === 0 || !description.trim() || status === "loading"}
               className="w-full py-3 rounded-xl bg-emerald-600 text-white text-sm font-semibold disabled:opacity-40 transition-opacity"
             >
               {status === "loading" ? "Analysing your photo…" : "Submit"}

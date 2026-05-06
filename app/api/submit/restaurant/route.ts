@@ -5,7 +5,6 @@ import { getSupabaseAdmin } from "@/lib/supabase-admin";
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
-    const image = formData.get("image") as File | null;
     const restaurantName = formData.get("restaurant_name") as string;
     const locationDescription = formData.get("location_description") as string;
     const cuisineDescription = formData.get("cuisine_description") as string;
@@ -17,23 +16,32 @@ export async function POST(req: NextRequest) {
 
     let menuExtract = null;
     let aiNotes = null;
-    let storedImagePath: string | null = null;
+    let storedPaths: string[] = [];
 
-    if (image && image.size > 0) {
-      const buffer = Buffer.from(await image.arrayBuffer());
-      const base64Image = buffer.toString("base64");
-      const mimeType = image.type;
-      const ext = mimeType.split("/")[1] ?? "jpg";
-      const imagePath = `menus/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const imageFiles = (formData.getAll("images") as File[]).filter((f) => f && f.size > 0).slice(0, 3);
 
-      const [menuData, uploadResult] = await Promise.all([
-        readMenu(base64Image, mimeType),
-        getSupabaseAdmin().storage.from("submission-images").upload(imagePath, buffer, { contentType: mimeType }),
+    if (imageFiles.length > 0) {
+      const processed = await Promise.all(
+        imageFiles.map(async (file) => {
+          const buf = Buffer.from(await file.arrayBuffer());
+          const ext = file.type.split("/")[1] ?? "jpg";
+          const path = `menus/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+          return { buf, mimeType: file.type, base64: buf.toString("base64"), path };
+        })
+      );
+
+      const [menuData, ...uploadResults] = await Promise.all([
+        readMenu(processed.map((p) => ({ base64: p.base64, mimeType: p.mimeType }))),
+        ...processed.map((p) =>
+          getSupabaseAdmin().storage.from("submission-images").upload(p.path, p.buf, { contentType: p.mimeType })
+        ),
       ]);
 
       menuExtract = menuData;
       aiNotes = menuData.notes;
-      storedImagePath = uploadResult.error ? null : imagePath;
+      storedPaths = uploadResults
+        .map((r, i) => (r.error ? null : processed[i].path))
+        .filter(Boolean) as string[];
     }
 
     const { error } = await getSupabaseAdmin().from("restaurant_submissions").insert({
@@ -44,7 +52,8 @@ export async function POST(req: NextRequest) {
       ai_notes: aiNotes,
       submitter_session_id: sessionId,
       image_processed: !!menuExtract,
-      image_path: storedImagePath,
+      image_path: storedPaths[0] ?? null,
+      image_paths: storedPaths,
     });
 
     if (error) throw error;
