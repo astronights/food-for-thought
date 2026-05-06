@@ -262,15 +262,19 @@ export interface MenuExtract {
 }
 
 export async function readMenu(
-  images: ImageInput[]
+  images: ImageInput[],
+  submitterNotes?: string
 ): Promise<MenuExtract> {
   const model = genAI.getGenerativeModel({
     model: MODEL,
     generationConfig: { responseMimeType: "application/json", responseSchema: MENU_SCHEMA },
   });
+  const contextNote = submitterNotes?.trim()
+    ? `\n\nSubmitter's note: "${submitterNotes.trim()}"`
+    : "";
   const result = await model.generateContent([
     ...images.map((img) => ({ inlineData: { data: img.base64, mimeType: img.mimeType } })),
-    { text: MENU_PROMPT },
+    { text: MENU_PROMPT + contextNote },
   ]);
   return JSON.parse(result.response.text()) as MenuExtract;
 }

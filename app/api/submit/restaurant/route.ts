@@ -8,6 +8,7 @@ export async function POST(req: NextRequest) {
     const restaurantName = formData.get("restaurant_name") as string;
     const locationDescription = formData.get("location_description") as string;
     const cuisineDescription = formData.get("cuisine_description") as string;
+    const submitterNotes = (formData.get("notes") as string | null) ?? "";
     const sessionId = formData.get("session_id") as string;
 
     if (!restaurantName) {
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
       );
 
       const [menuData, ...uploadResults] = await Promise.all([
-        readMenu(processed.map((p) => ({ base64: p.base64, mimeType: p.mimeType }))),
+        readMenu(processed.map((p) => ({ base64: p.base64, mimeType: p.mimeType })), submitterNotes),
         ...processed.map((p) =>
           getSupabaseAdmin().storage.from("submission-images").upload(p.path, p.buf, { contentType: p.mimeType })
         ),
@@ -50,6 +51,7 @@ export async function POST(req: NextRequest) {
       cuisine_description: cuisineDescription || null,
       ai_extracted_dishes: menuExtract,
       ai_notes: aiNotes,
+      submitter_notes: submitterNotes || null,
       submitter_session_id: sessionId,
       image_processed: !!menuExtract,
       image_path: storedPaths[0] ?? null,

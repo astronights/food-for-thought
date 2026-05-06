@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { Camera, CheckCircle, ImagePlus } from "lucide-react";
+import { compressImage } from "@/lib/compress-image";
 
 interface ContributeRestaurantSheetProps {
   open: boolean;
@@ -24,16 +25,18 @@ export function ContributeRestaurantSheet({ open, onClose }: ContributeRestauran
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
   const [cuisine, setCuisine] = useState("");
+  const [notes, setNotes] = useState("");
   const [images, setImages] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const fileRef = useRef<HTMLInputElement>(null);
   const MAX_IMAGES = 3;
 
-  function handleImages(files: FileList | null) {
+  async function handleImages(files: FileList | null) {
     if (!files) return;
     const incoming = Array.from(files).slice(0, MAX_IMAGES - images.length);
-    const newImages = [...images, ...incoming].slice(0, MAX_IMAGES);
+    const compressed = await Promise.all(incoming.map((f) => compressImage(f)));
+    const newImages = [...images, ...compressed].slice(0, MAX_IMAGES);
     setImages(newImages);
     setPreviews(newImages.map((f) => URL.createObjectURL(f)));
   }
@@ -53,6 +56,7 @@ export function ContributeRestaurantSheet({ open, onClose }: ContributeRestauran
       fd.append("location_description", location);
       fd.append("cuisine_description", cuisine);
       images.forEach((img) => fd.append("images", img));
+      if (notes.trim()) fd.append("notes", notes);
       fd.append("session_id", getSessionId());
 
       const res = await fetch("/api/submit/restaurant", { method: "POST", body: fd });
@@ -64,7 +68,7 @@ export function ContributeRestaurantSheet({ open, onClose }: ContributeRestauran
   }
 
   function handleClose() {
-    setName(""); setLocation(""); setCuisine("");
+    setName(""); setLocation(""); setCuisine(""); setNotes("");
     setImages([]); setPreviews([]); setStatus("idle");
     onClose();
   }
@@ -164,6 +168,19 @@ export function ContributeRestaurantSheet({ open, onClose }: ContributeRestauran
                   <span className="text-sm">Add menu photo(s)</span>
                 </button>
               )}
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 block">
+                Additional notes <span className="text-gray-400">(optional)</span>
+              </label>
+              <Textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="e.g. Build-your-own bowls, ~$12–$16. Menu is on a board inside the restaurant."
+                className="rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm min-h-[72px] resize-none"
+              />
             </div>
 
             {status === "error" && (

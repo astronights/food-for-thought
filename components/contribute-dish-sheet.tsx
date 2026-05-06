@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Camera, CheckCircle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { compressImage } from "@/lib/compress-image";
 import type { GroupWithOptions } from "@/lib/types";
 
 interface ContributeDishSheetProps {
@@ -195,10 +196,11 @@ export function ContributeDishSheet({
     setSelections((prev) => ({ ...prev, [groupId]: value }));
   }
 
-  function handleImages(files: FileList | null) {
+  async function handleImages(files: FileList | null) {
     if (!files) return;
     const incoming = Array.from(files).slice(0, MAX_IMAGES - images.length);
-    const newImages = [...images, ...incoming].slice(0, MAX_IMAGES);
+    const compressed = await Promise.all(incoming.map((f) => compressImage(f)));
+    const newImages = [...images, ...compressed].slice(0, MAX_IMAGES);
     setImages(newImages);
     setPreviews(newImages.map((f) => URL.createObjectURL(f)));
   }
