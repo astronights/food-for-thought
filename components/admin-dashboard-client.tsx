@@ -54,11 +54,14 @@ interface RestaurantSubmission {
   restaurant_name: string;
   location_description: string | null;
   cuisine_description: string | null;
+  submitter_notes: string | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ai_extracted_dishes: any | null;
   ai_notes: string | null;
   status: string; admin_notes: string | null;
-  image_path: string | null; created_at: string;
+  image_path: string | null;
+  image_paths: string[] | null;
+  created_at: string;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -286,7 +289,8 @@ function RestaurantDetail({ sub, onUpdate }: { sub: RestaurantSubmission; onUpda
     return (extract.customisation_groups ?? []).map((g: { name: string; ui_hint: string; max_selections: number; options: { name: string; price_delta_sgd?: number }[] }) => ({
       name: g.name,
       ui_hint: g.ui_hint as EditableGroup["ui_hint"],
-      max_selections: g.max_selections ?? 0,
+      // pick_many is always unlimited regardless of what Gemini returned
+      max_selections: g.ui_hint === "pick_many" ? null : (g.max_selections ?? 1),
       options: (g.options ?? []).map((o) => ({ name: o.name, price_delta_sgd: o.price_delta_sgd ?? 0 })),
     }));
   })();
@@ -387,6 +391,11 @@ function RestaurantDetail({ sub, onUpdate }: { sub: RestaurantSubmission; onUpda
 
       {sub.location_description && (
         <p className="text-sm text-gray-500 dark:text-gray-400"><span className="text-xs text-gray-400 font-medium">Location: </span>{sub.location_description}</p>
+      )}
+      {sub.submitter_notes && (
+        <p className="text-sm text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2">
+          <span className="text-xs font-medium">Submitter note: </span>{sub.submitter_notes}
+        </p>
       )}
 
       {/* ── BYO: editable customisation groups ── */}

@@ -1,6 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readMenu } from "@/lib/gemini";
+import { readMenu, type MenuExtract } from "@/lib/gemini";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
+
+function toTitleCase(str: string): string {
+  return str.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function titleCaseExtract(extract: MenuExtract): MenuExtract {
+  return {
+    ...extract,
+    restaurant_name: extract.restaurant_name ? toTitleCase(extract.restaurant_name) : extract.restaurant_name,
+    dishes: extract.dishes.map((d) => ({ ...d, name: toTitleCase(d.name), category: toTitleCase(d.category) })),
+    customisation_groups: extract.customisation_groups.map((g) => ({
+      ...g,
+      name: toTitleCase(g.name),
+      options: g.options.map((o) => ({ ...o, name: toTitleCase(o.name) })),
+    })),
+  };
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -38,7 +55,7 @@ export async function POST(req: NextRequest) {
         ),
       ]);
 
-      menuExtract = menuData;
+      menuExtract = titleCaseExtract(menuData);
       aiNotes = menuData.notes;
       storedPaths = uploadResults
         .map((r, i) => (r.error ? null : processed[i].path))

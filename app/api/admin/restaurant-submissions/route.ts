@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
             name: g.name,
             ui_hint: g.ui_hint,
             min_selections: g.ui_hint === "pick_one_required" ? 1 : 0,
-            max_selections: g.max_selections || null,
+            max_selections: g.ui_hint === "pick_many" ? null : (g.max_selections || null),
             display_order: gi,
           })
           .select()
