@@ -453,9 +453,16 @@ function RestaurantDetail({ sub, onUpdate }: { sub: RestaurantSubmission; onUpda
                     <div key={oi} className="flex gap-1.5 items-center">
                       <input value={o.name} onChange={(e) => updateOption(gi, oi, "name", e.target.value)}
                         placeholder="Option name" className={`${inputCls} flex-1`} />
-                      <input type="number" value={o.price_delta_sgd || ""}
-                        onChange={(e) => updateOption(gi, oi, "price_delta_sgd", Number(e.target.value))}
-                        placeholder="+$" className={`${inputCls} w-14`} />
+                      {/* Price delta: only show input when non-zero, otherwise a subtle +$ hint */}
+                      {o.price_delta_sgd !== 0 ? (
+                        <input type="number" value={o.price_delta_sgd}
+                          onChange={(e) => updateOption(gi, oi, "price_delta_sgd", Number(e.target.value))}
+                          className={`${inputCls} w-14 text-amber-600 dark:text-amber-400`} />
+                      ) : (
+                        <button onClick={() => updateOption(gi, oi, "price_delta_sgd", 0.01)}
+                          className="text-gray-200 dark:text-gray-700 hover:text-gray-400 text-xs w-7 text-center flex-shrink-0"
+                          title="Add price delta">+$</button>
+                      )}
                       <button onClick={() => removeOption(gi, oi)} className="text-gray-300 dark:text-gray-600 hover:text-red-400 flex-shrink-0">
                         <Trash2 className="h-3 w-3" />
                       </button>
