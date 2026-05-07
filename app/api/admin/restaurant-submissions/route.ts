@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdmin } from "@/lib/require-admin";
 
@@ -140,6 +141,10 @@ export async function POST(req: NextRequest) {
     .from("restaurant_submissions")
     .update({ status: "approved", reviewed_at: new Date().toISOString() })
     .eq("id", submission_id);
+
+  // Bust the cached home page and the new restaurant's page so they appear immediately
+  revalidatePath("/");
+  revalidatePath(`/restaurants/${restaurant.slug}`);
 
   return NextResponse.json({ success: true, restaurant, is_build_your_own: isBuildYourOwn });
 }
