@@ -253,28 +253,32 @@ function DishDetail({ sub, onUpdate }: { sub: DishSubmission; onUpdate: () => vo
             <ConfidenceBadge score={sub.ai_confidence} />
           </div>
           <div className="space-y-2 max-h-80 overflow-y-auto">
-            {/* Header row */}
-            <div className="grid grid-cols-[1fr_52px_52px_52px_52px_52px] gap-1 px-1">
-              {["Ingredient", "kcal", "prot", "carbs", "fat", "Na mg"].map((h) => (
-                <span key={h} className="text-xs text-gray-400 font-medium">{h}</span>
-              ))}
-            </div>
             {deltas.map((d, i) => (
-              <div key={i} className="rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-2 py-1.5 space-y-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-gray-400">{d.group_name}</span>
-                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300 flex-1">{d.option_name}</span>
+              <div key={i} className="rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-2 py-2 space-y-1.5">
+                <div className="flex items-center justify-between gap-1.5">
+                  <div className="min-w-0">
+                    <span className="text-xs text-gray-400">{d.group_name} · </span>
+                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{d.option_name}</span>
+                  </div>
                   <ConfidenceBadge score={d.confidence} />
                 </div>
-                <div className="grid grid-cols-5 gap-1">
-                  {(["calories_delta", "protein_delta_g", "carbs_delta_g", "fat_delta_g", "sodium_delta_mg"] as const).map((field) => (
-                    <input
-                      key={field}
-                      type="number"
-                      value={d[field]}
-                      onChange={(e) => updateDelta(i, field, e.target.value)}
-                      className={deltaFieldCls}
-                    />
+                <div className="grid grid-cols-5 gap-1.5">
+                  {([
+                    { field: "calories_delta",  label: "kcal" },
+                    { field: "protein_delta_g", label: "prot" },
+                    { field: "carbs_delta_g",   label: "carbs" },
+                    { field: "fat_delta_g",     label: "fat" },
+                    { field: "sodium_delta_mg", label: "Na" },
+                  ] as const).map(({ field, label }) => (
+                    <div key={field}>
+                      <div className="text-[10px] text-gray-400 mb-0.5 text-center">{label}</div>
+                      <input
+                        type="number"
+                        value={d[field]}
+                        onChange={(e) => updateDelta(i, field, e.target.value)}
+                        className={deltaFieldCls}
+                      />
+                    </div>
                   ))}
                 </div>
               </div>
