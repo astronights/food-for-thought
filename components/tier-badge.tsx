@@ -26,9 +26,9 @@ export function TierBadge({ tier, submissionCount }: TierBadgeProps) {
     return (
       <span
         title={label}
-        className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-500 dark:text-blue-400 text-xs flex-shrink-0 tracking-tighter leading-none"
+        className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-500 dark:text-blue-400 text-xs flex-shrink-0 font-bold"
       >
-        ···
+        *
       </span>
     );
   }

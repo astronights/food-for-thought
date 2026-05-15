@@ -182,8 +182,12 @@ function DishDetail({ sub, onUpdate }: { sub: DishSubmission; onUpdate: () => vo
     const body = isBYO
       ? { id: sub.id, status, admin_notes: notes, ingredient_deltas: deltas }
       : { id: sub.id, status, admin_notes: notes, admin_calories: Number(cal), admin_protein_g: Number(prot), admin_carbs_g: Number(carbs), admin_fat_g: Number(fat), admin_sodium_mg: Number(sodium) };
-    await adminFetch("/api/admin/submissions", { method: "PATCH", body: JSON.stringify(body) });
+    const res = await adminFetch("/api/admin/submissions", { method: "PATCH", body: JSON.stringify(body) });
+    const json = await res.json();
     setSaving(false);
+    if (isBYO && status === "approved" && typeof json.matched === "number") {
+      alert(`Wrote deltas for ${json.matched} of ${json.total} ingredients.${json.matched === 0 ? "\n\nNo options matched — the ingredient names from Gemini may not match the database. Check that the restaurant's option names are correct." : ""}`);
+    }
     onUpdate();
   }
 

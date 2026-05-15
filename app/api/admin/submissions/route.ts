@@ -36,6 +36,7 @@ export async function PATCH(req: NextRequest) {
 
   const supabase = getSupabaseAdmin();
   const isBYOApproval = status === "approved" && Array.isArray(ingredient_deltas) && ingredient_deltas.length > 0;
+  let extraResponse: Record<string, unknown> = {};
 
   // Persist admin-edited deltas back so they contribute to the running average
   const { error } = await supabase
@@ -105,12 +106,16 @@ export async function PATCH(req: NextRequest) {
         }
       }
 
-      // Write averaged values to customisation_options
+      // Write averaged values to customisation_options; track matched vs total
+      let matched = 0;
+      const total = Object.values(agg).reduce((n, opts) => n + Object.keys(opts).length, 0);
+
       await Promise.all(
         Object.entries(agg).flatMap(([groupName, options]) =>
           Object.entries(options).map(([optionName, a]) => {
             const optionId = lookup[norm(groupName)]?.[norm(optionName)];
             if (!optionId) return Promise.resolve();
+            matched++;
             return supabase.from("customisation_options").update({
               calories_delta:  Math.round(mean(a.cal)),
               protein_delta_g: Math.round(mean(a.prot)    * 10) / 10,
@@ -124,6 +129,8 @@ export async function PATCH(req: NextRequest) {
           })
         )
       );
+
+      extraResponse = { matched, total };
 
       // Promote restaurant from "no data" (tier 3) to "community estimate" (tier 2)
       const { data: restaurant } = await supabase
@@ -154,5 +161,5 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, ...extraResponse });
 }
