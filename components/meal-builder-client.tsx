@@ -62,6 +62,9 @@ export function MealBuilderClient({ restaurant, item, groups }: MealBuilderClien
   const incompleteGroups = groups.filter((g) => !isGroupComplete(g, selections));
   const isComplete = incompleteGroups.length === 0;
 
+  // Show "—" instead of 0 for BYO items before any ingredient is selected
+  const isEmpty = item.base_calories === null && selectedOptions.length === 0;
+
   function selectOne(groupId: string, optionId: string) {
     setSelections((prev) => ({ ...prev, [groupId]: optionId }));
   }
@@ -263,7 +266,7 @@ export function MealBuilderClient({ restaurant, item, groups }: MealBuilderClien
               {/* Calories */}
               <div className="text-center flex-shrink-0">
                 <div className="text-xl font-bold tabular-nums text-gray-900 dark:text-gray-100">
-                  {totals.calories}
+                  {isEmpty ? <span className="text-gray-300 dark:text-gray-600">—</span> : totals.calories}
                 </div>
                 <div className="text-xs text-gray-400">kcal</div>
               </div>
@@ -273,15 +276,15 @@ export function MealBuilderClient({ restaurant, item, groups }: MealBuilderClien
               {/* Macros */}
               <div className="flex flex-1 justify-around">
                 <div className="text-center">
-                  <div className="text-sm font-bold tabular-nums text-blue-500">{totals.protein_g.toFixed(1)}<span className="text-xs font-normal ml-0.5">g</span></div>
+                  <div className="text-sm font-bold tabular-nums text-blue-500">{isEmpty ? <span className="text-gray-300 dark:text-gray-600">—</span> : <>{totals.protein_g.toFixed(1)}<span className="text-xs font-normal ml-0.5">g</span></>}</div>
                   <div className="text-xs text-gray-400">Protein</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-sm font-bold tabular-nums text-orange-500">{totals.carbs_g.toFixed(1)}<span className="text-xs font-normal ml-0.5">g</span></div>
+                  <div className="text-sm font-bold tabular-nums text-orange-500">{isEmpty ? <span className="text-gray-300 dark:text-gray-600">—</span> : <>{totals.carbs_g.toFixed(1)}<span className="text-xs font-normal ml-0.5">g</span></>}</div>
                   <div className="text-xs text-gray-400">Carbs</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-sm font-bold tabular-nums text-amber-500">{totals.fat_g.toFixed(1)}<span className="text-xs font-normal ml-0.5">g</span></div>
+                  <div className="text-sm font-bold tabular-nums text-amber-500">{isEmpty ? <span className="text-gray-300 dark:text-gray-600">—</span> : <>{totals.fat_g.toFixed(1)}<span className="text-xs font-normal ml-0.5">g</span></>}</div>
                   <div className="text-xs text-gray-400">Fat</div>
                 </div>
               </div>
