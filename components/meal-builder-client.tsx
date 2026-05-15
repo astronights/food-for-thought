@@ -62,9 +62,11 @@ export function MealBuilderClient({ restaurant, item, groups }: MealBuilderClien
   const incompleteGroups = groups.filter((g) => !isGroupComplete(g, selections));
   const isComplete = incompleteGroups.length === 0;
 
-  // Show "—" for BYO items until at least one selected option has real nutrition data
-  const hasNutritionData = item.base_calories !== null ||
-    selectedOptions.some((o) => (o.calories_delta ?? 0) !== 0);
+  // For BYO items (has_customisation), base_* fields are meaningless (0 or null);
+  // only show numbers once a selected option actually contributes non-zero calories.
+  const hasNutritionData = item.has_customisation
+    ? selectedOptions.some((o) => (o.calories_delta ?? 0) !== 0)
+    : item.base_calories !== null;
   const isEmpty = !hasNutritionData;
 
   function selectOne(groupId: string, optionId: string) {
