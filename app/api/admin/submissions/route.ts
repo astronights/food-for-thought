@@ -90,17 +90,18 @@ export async function PATCH(req: NextRequest) {
         }
       }
 
-      // Build lookup: groupName → optionName → optionId
+      // Build lookup: normalised(groupName) → normalised(optionName) → optionId
       const { data: groups } = await supabase
         .from("customisation_groups")
         .select("id, name, customisation_options(id, name)")
         .eq("restaurant_id", submission.restaurant_id);
 
+      const norm = (s: string) => s.trim().toLowerCase();
       const lookup: Record<string, Record<string, string>> = {};
       for (const g of groups ?? []) {
-        lookup[g.name] = {};
+        lookup[norm(g.name)] = {};
         for (const o of (g.customisation_options as { id: string; name: string }[])) {
-          lookup[g.name][o.name] = o.id;
+          lookup[norm(g.name)][norm(o.name)] = o.id;
         }
       }
 
@@ -108,7 +109,7 @@ export async function PATCH(req: NextRequest) {
       await Promise.all(
         Object.entries(agg).flatMap(([groupName, options]) =>
           Object.entries(options).map(([optionName, a]) => {
-            const optionId = lookup[groupName]?.[optionName];
+            const optionId = lookup[norm(groupName)]?.[norm(optionName)];
             if (!optionId) return Promise.resolve();
             return supabase.from("customisation_options").update({
               calories_delta:  Math.round(mean(a.cal)),
@@ -134,9 +135,19 @@ export async function PATCH(req: NextRequest) {
 
       if (restaurant?.slug) {
         await supabase.from("restaurants").update({ tier: 2 }).eq("id", submission.restaurant_id);
-        revalidatePath(`/restaurants/${restaurant.slug}`);
+      }
+
+      // Always revalidate — regardless of tier, the builder page needs fresh delta values
+      const { data: anyRestaurant } = await supabase
+        .from("restaurants")
+        .select("slug")
+        .eq("id", submission.restaurant_id)
+        .single();
+
+      if (anyRestaurant?.slug) {
+        revalidatePath(`/restaurants/${anyRestaurant.slug}`);
         if (submission.menu_item_id) {
-          revalidatePath(`/restaurants/${restaurant.slug}/build/${submission.menu_item_id}`);
+          revalidatePath(`/restaurants/${anyRestaurant.slug}/build/${submission.menu_item_id}`);
         }
         revalidatePath("/");
       }
