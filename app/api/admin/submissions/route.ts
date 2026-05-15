@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdmin } from "@/lib/require-admin";
 
@@ -35,7 +36,7 @@ export async function PATCH(req: NextRequest) {
   if (status === "approved" && Array.isArray(ingredient_deltas) && ingredient_deltas.length > 0) {
     const { data: submission } = await supabase
       .from("crowdsource_submissions")
-      .select("restaurant_id")
+      .select("restaurant_id, menu_item_id")
       .eq("id", id)
       .single();
 
@@ -75,6 +76,27 @@ export async function PATCH(req: NextRequest) {
           }).eq("id", optionId);
         })
       );
+
+      // Promote restaurant from "no data" (tier 3) to "community estimate" (tier 2)
+      const { data: restaurant } = await supabase
+        .from("restaurants")
+        .select("slug")
+        .eq("id", submission.restaurant_id)
+        .eq("tier", 3)
+        .single();
+
+      if (restaurant?.slug) {
+        await supabase
+          .from("restaurants")
+          .update({ tier: 2 })
+          .eq("id", submission.restaurant_id);
+
+        revalidatePath(`/restaurants/${restaurant.slug}`);
+        if (submission.menu_item_id) {
+          revalidatePath(`/restaurants/${restaurant.slug}/build/${submission.menu_item_id}`);
+        }
+        revalidatePath("/");
+      }
     }
   }
 
