@@ -62,8 +62,10 @@ export function MealBuilderClient({ restaurant, item, groups }: MealBuilderClien
   const incompleteGroups = groups.filter((g) => !isGroupComplete(g, selections));
   const isComplete = incompleteGroups.length === 0;
 
-  // Show "—" instead of 0 for BYO items before any ingredient is selected
-  const isEmpty = item.base_calories === null && selectedOptions.length === 0;
+  // Show "—" for BYO items until at least one selected option has real nutrition data
+  const hasNutritionData = item.base_calories !== null ||
+    selectedOptions.some((o) => (o.calories_delta ?? 0) !== 0);
+  const isEmpty = !hasNutritionData;
 
   function selectOne(groupId: string, optionId: string) {
     setSelections((prev) => ({ ...prev, [groupId]: optionId }));
@@ -112,6 +114,11 @@ export function MealBuilderClient({ restaurant, item, groups }: MealBuilderClien
           const isInvalid = attempted && isRequired && !isGroupComplete(group, selections);
           const isPickMany = group.ui_hint === "pick_many";
           const currentMany = (selections[group.id] as string[] | undefined) ?? [];
+
+          // Only show data-quality dots when the group has a mix of options with and without deltas
+          const groupHasAnyData = group.options.some((o) => (o.calories_delta ?? 0) !== 0);
+          const groupHasMissingData = group.options.some((o) => (o.calories_delta ?? 0) === 0);
+          const showDataQuality = groupHasAnyData && groupHasMissingData;
 
           return (
             <section key={group.id}>
@@ -207,6 +214,17 @@ export function MealBuilderClient({ restaurant, item, groups }: MealBuilderClien
                       >
                         {option.name}
                       </span>
+
+                      {/* Data-quality dot — only shown when the group has mixed coverage */}
+                      {showDataQuality && (
+                        <span
+                          className={`flex-shrink-0 h-1.5 w-1.5 rounded-full ${
+                            (option.calories_delta ?? 0) !== 0
+                              ? "bg-emerald-400"
+                              : "bg-amber-400"
+                          }`}
+                        />
+                      )}
 
                       {/* Nutrient delta */}
                       {(() => {
