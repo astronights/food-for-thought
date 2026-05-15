@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
 
 type IngredientDeltaRow = {
   group_name: string; option_name: string;
+  option_id?: string | null;
   calories_delta: number; protein_delta_g: number; carbs_delta_g: number;
   fat_delta_g: number; fibre_delta_g: number; sugar_delta_g: number;
   sat_fat_delta_g: number; sodium_delta_mg: number;
@@ -69,6 +70,7 @@ export async function PATCH(req: NextRequest) {
 
       // Aggregate per group+option
       const agg: Record<string, Record<string, {
+        option_id: string | null;
         cal: number[]; prot: number[]; carbs: number[]; fat: number[];
         fibre: number[]; sugar: number[]; sat_fat: number[]; sodium: number[];
       }>> = {};
@@ -77,7 +79,9 @@ export async function PATCH(req: NextRequest) {
         for (const d of (sub.ai_ingredient_deltas as IngredientDeltaRow[])) {
           if (!agg[d.group_name]) agg[d.group_name] = {};
           if (!agg[d.group_name][d.option_name]) {
-            agg[d.group_name][d.option_name] = { cal: [], prot: [], carbs: [], fat: [], fibre: [], sugar: [], sat_fat: [], sodium: [] };
+            agg[d.group_name][d.option_name] = { option_id: d.option_id ?? null, cal: [], prot: [], carbs: [], fat: [], fibre: [], sugar: [], sat_fat: [], sodium: [] };
+          } else if (!agg[d.group_name][d.option_name].option_id && d.option_id) {
+            agg[d.group_name][d.option_name].option_id = d.option_id;
           }
           const a = agg[d.group_name][d.option_name];
           a.cal.push(d.calories_delta);
@@ -113,7 +117,8 @@ export async function PATCH(req: NextRequest) {
       await Promise.all(
         Object.entries(agg).flatMap(([groupName, options]) =>
           Object.entries(options).map(([optionName, a]) => {
-            const optionId = lookup[norm(groupName)]?.[norm(optionName)];
+            // Use pre-resolved option_id if available; fall back to name matching
+            const optionId = a.option_id || lookup[norm(groupName)]?.[norm(optionName)];
             if (!optionId) return Promise.resolve();
             matched++;
             return supabase.from("customisation_options").update({

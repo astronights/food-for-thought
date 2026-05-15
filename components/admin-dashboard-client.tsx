@@ -34,6 +34,7 @@ interface RuleSuggestion {
 interface IngredientDelta {
   group_name: string;
   option_name: string;
+  option_id?: string | null;
   calories_delta: number;
   protein_delta_g: number;
   carbs_delta_g: number;

@@ -76,6 +76,7 @@ export async function POST(req: NextRequest) {
     // Check if this is a BYO menu item — if so, extract per-ingredient deltas
     let isBYO = false;
     let byoGroups: GroupWithOptions[] = [];
+    const optionIdLookup: Record<string, string> = {};
 
     if (menuItemId) {
       const { data: menuItem } = await getSupabaseAdmin()
@@ -88,11 +89,11 @@ export async function POST(req: NextRequest) {
         const [{ data: itemGroups }, { data: restGroups }] = await Promise.all([
           getSupabaseAdmin()
             .from("customisation_groups")
-            .select("name, ui_hint, customisation_options(name)")
+            .select("name, ui_hint, customisation_options(id, name)")
             .eq("menu_item_id", menuItemId),
           getSupabaseAdmin()
             .from("customisation_groups")
-            .select("name, ui_hint, customisation_options(name)")
+            .select("name, ui_hint, customisation_options(id, name)")
             .eq("restaurant_id", restaurantId)
             .is("menu_item_id", null),
         ]);
@@ -102,8 +103,16 @@ export async function POST(req: NextRequest) {
           byoGroups = allGroups.map((g) => ({
             name: g.name,
             ui_hint: g.ui_hint,
-            options: (g.customisation_options as { name: string }[]).map((o) => o.name),
+            options: (g.customisation_options as { id: string; name: string }[]).map((o) => o.name),
           }));
+          // Build name→id lookup so Gemini's returned names can be resolved to option IDs
+          const norm = (s: string) => s.trim().toLowerCase();
+          for (const g of allGroups) {
+            const gKey = norm(g.name);
+            for (const o of (g.customisation_options as { id: string; name: string }[])) {
+              optionIdLookup[`${gKey}|||${norm(o.name)}`] = o.id;
+            }
+          }
         }
       }
     }
@@ -138,10 +147,15 @@ export async function POST(req: NextRequest) {
     const nutritionRecord = isBYO
       ? (() => {
           const byo = extractionResult as import("@/lib/gemini").BYONutritionEstimate;
+          const norm = (s: string) => s.trim().toLowerCase();
+          const ingredientsWithIds = byo.ingredients.map((d) => ({
+            ...d,
+            option_id: optionIdLookup[`${norm(d.group_name)}|||${norm(d.option_name)}`] ?? null,
+          }));
           return {
             ai_confidence: byo.total_confidence,
             ai_notes: byo.notes,
-            ai_ingredient_deltas: byo.ingredients,
+            ai_ingredient_deltas: ingredientsWithIds,
           };
         })()
       : (() => {
