@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { estimateNutrition, estimateNutritionFromText, type GroupContext } from "@/lib/gemini";
+import { estimateNutrition, estimateNutritionFromText, estimateBYOIngredients, type GroupContext, type GroupWithOptions } from "@/lib/gemini";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 
 export async function POST(req: NextRequest) {
@@ -73,11 +73,47 @@ export async function POST(req: NextRequest) {
       })
     );
 
-    const [nutrition, ...uploadResults] = await Promise.all([
-      estimateNutrition(
-        processed.map((p) => ({ base64: p.base64, mimeType: p.mimeType })),
-        orderDescription
-      ),
+    // Check if this is a BYO menu item — if so, extract per-ingredient deltas
+    let isBYO = false;
+    let byoGroups: GroupWithOptions[] = [];
+
+    if (menuItemId) {
+      const { data: menuItem } = await getSupabaseAdmin()
+        .from("menu_items")
+        .select("has_customisation")
+        .eq("id", menuItemId)
+        .single();
+
+      if (menuItem?.has_customisation) {
+        const [{ data: itemGroups }, { data: restGroups }] = await Promise.all([
+          getSupabaseAdmin()
+            .from("customisation_groups")
+            .select("name, ui_hint, customisation_options(name)")
+            .eq("menu_item_id", menuItemId),
+          getSupabaseAdmin()
+            .from("customisation_groups")
+            .select("name, ui_hint, customisation_options(name)")
+            .eq("restaurant_id", restaurantId)
+            .is("menu_item_id", null),
+        ]);
+        const allGroups = [...(itemGroups ?? []), ...(restGroups ?? [])];
+        if (allGroups.length > 0) {
+          isBYO = true;
+          byoGroups = allGroups.map((g) => ({
+            name: g.name,
+            ui_hint: g.ui_hint,
+            options: (g.customisation_options as { name: string }[]).map((o) => o.name),
+          }));
+        }
+      }
+    }
+
+    const imageInputs = processed.map((p) => ({ base64: p.base64, mimeType: p.mimeType }));
+
+    const [extractionResult, ...uploadResults] = await Promise.all([
+      isBYO
+        ? estimateBYOIngredients(imageInputs, orderDescription, byoGroups)
+        : estimateNutrition(imageInputs, orderDescription),
       ...processed.map((p) =>
         getSupabaseAdmin().storage.from("submission-images").upload(p.path, p.buf, { contentType: p.mimeType })
       ),
@@ -87,28 +123,48 @@ export async function POST(req: NextRequest) {
       .map((r, i) => (r.error ? null : processed[i].path))
       .filter(Boolean) as string[];
 
-    const { error } = await getSupabaseAdmin().from("crowdsource_submissions").insert({
+    const baseRecord = {
       restaurant_id: restaurantId,
       menu_item_id: menuItemId || null,
       dish_name_raw: dishName,
       order_description: orderDescription,
-      ai_calories: nutrition.calories,
-      ai_protein_g: nutrition.protein_g,
-      ai_carbs_g: nutrition.carbs_g,
-      ai_fat_g: nutrition.fat_g,
-      ai_fibre_g: nutrition.fibre_g,
-      ai_sugar_g: nutrition.sugar_g,
-      ai_sat_fat_g: nutrition.sat_fat_g,
-      ai_sodium_mg: nutrition.sodium_mg,
-      ai_confidence: nutrition.confidence,
-      ai_notes: nutrition.notes,
-      ai_price_sgd: nutrition.price_sgd || null,
-      ai_weight_g: nutrition.weight_g || null,
       is_correction_flag: false,
       submitter_session_id: sessionId,
       image_processed: true,
       image_path: storedPaths[0] ?? null,
       image_paths: storedPaths,
+    };
+
+    const nutritionRecord = isBYO
+      ? (() => {
+          const byo = extractionResult as import("@/lib/gemini").BYONutritionEstimate;
+          return {
+            ai_confidence: byo.total_confidence,
+            ai_notes: byo.notes,
+            ai_ingredient_deltas: byo.ingredients,
+          };
+        })()
+      : (() => {
+          const n = extractionResult as import("@/lib/gemini").NutritionEstimate;
+          return {
+            ai_calories: n.calories,
+            ai_protein_g: n.protein_g,
+            ai_carbs_g: n.carbs_g,
+            ai_fat_g: n.fat_g,
+            ai_fibre_g: n.fibre_g,
+            ai_sugar_g: n.sugar_g,
+            ai_sat_fat_g: n.sat_fat_g,
+            ai_sodium_mg: n.sodium_mg,
+            ai_confidence: n.confidence,
+            ai_notes: n.notes,
+            ai_price_sgd: n.price_sgd || null,
+            ai_weight_g: n.weight_g || null,
+          };
+        })();
+
+    const { error } = await getSupabaseAdmin().from("crowdsource_submissions").insert({
+      ...baseRecord,
+      ...nutritionRecord,
     });
 
     if (error) throw error;
