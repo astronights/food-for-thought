@@ -16,6 +16,17 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(data);
 }
 
+type IngredientDeltaRow = {
+  group_name: string; option_name: string;
+  calories_delta: number; protein_delta_g: number; carbs_delta_g: number;
+  fat_delta_g: number; fibre_delta_g: number; sugar_delta_g: number;
+  sat_fat_delta_g: number; sodium_delta_mg: number;
+};
+
+function mean(nums: number[]) {
+  return nums.reduce((a, b) => a + b, 0) / nums.length;
+}
+
 export async function PATCH(req: NextRequest) {
   const user = await requireAdmin(req);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -24,16 +35,22 @@ export async function PATCH(req: NextRequest) {
   const { id, status, admin_notes, admin_calories, admin_protein_g, admin_carbs_g, admin_fat_g, admin_sodium_mg, ingredient_deltas } = body;
 
   const supabase = getSupabaseAdmin();
+  const isBYOApproval = status === "approved" && Array.isArray(ingredient_deltas) && ingredient_deltas.length > 0;
 
+  // Persist admin-edited deltas back so they contribute to the running average
   const { error } = await supabase
     .from("crowdsource_submissions")
-    .update({ status, admin_notes, admin_calories, admin_protein_g, admin_carbs_g, admin_fat_g, admin_sodium_mg, reviewed_at: new Date().toISOString() })
+    .update({
+      status, admin_notes,
+      admin_calories, admin_protein_g, admin_carbs_g, admin_fat_g, admin_sodium_mg,
+      ...(isBYOApproval ? { ai_ingredient_deltas: ingredient_deltas } : {}),
+      reviewed_at: new Date().toISOString(),
+    })
     .eq("id", id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // For BYO approvals, write ingredient deltas back to customisation_options
-  if (status === "approved" && Array.isArray(ingredient_deltas) && ingredient_deltas.length > 0) {
+  if (isBYOApproval) {
     const { data: submission } = await supabase
       .from("crowdsource_submissions")
       .select("restaurant_id, menu_item_id")
@@ -41,12 +58,44 @@ export async function PATCH(req: NextRequest) {
       .single();
 
     if (submission?.restaurant_id) {
+      // Average deltas across ALL approved BYO submissions for this restaurant
+      const { data: allApproved } = await supabase
+        .from("crowdsource_submissions")
+        .select("ai_ingredient_deltas")
+        .eq("restaurant_id", submission.restaurant_id)
+        .eq("status", "approved")
+        .not("ai_ingredient_deltas", "is", null);
+
+      // Aggregate per group+option
+      const agg: Record<string, Record<string, {
+        cal: number[]; prot: number[]; carbs: number[]; fat: number[];
+        fibre: number[]; sugar: number[]; sat_fat: number[]; sodium: number[];
+      }>> = {};
+
+      for (const sub of allApproved ?? []) {
+        for (const d of (sub.ai_ingredient_deltas as IngredientDeltaRow[])) {
+          if (!agg[d.group_name]) agg[d.group_name] = {};
+          if (!agg[d.group_name][d.option_name]) {
+            agg[d.group_name][d.option_name] = { cal: [], prot: [], carbs: [], fat: [], fibre: [], sugar: [], sat_fat: [], sodium: [] };
+          }
+          const a = agg[d.group_name][d.option_name];
+          a.cal.push(d.calories_delta);
+          a.prot.push(d.protein_delta_g);
+          a.carbs.push(d.carbs_delta_g);
+          a.fat.push(d.fat_delta_g);
+          a.fibre.push(d.fibre_delta_g);
+          a.sugar.push(d.sugar_delta_g);
+          a.sat_fat.push(d.sat_fat_delta_g);
+          a.sodium.push(d.sodium_delta_mg);
+        }
+      }
+
+      // Build lookup: groupName → optionName → optionId
       const { data: groups } = await supabase
         .from("customisation_groups")
         .select("id, name, customisation_options(id, name)")
         .eq("restaurant_id", submission.restaurant_id);
 
-      // Build lookup: groupName → optionName → optionId
       const lookup: Record<string, Record<string, string>> = {};
       for (const g of groups ?? []) {
         lookup[g.name] = {};
@@ -55,26 +104,24 @@ export async function PATCH(req: NextRequest) {
         }
       }
 
+      // Write averaged values to customisation_options
       await Promise.all(
-        ingredient_deltas.map((delta: {
-          group_name: string; option_name: string;
-          calories_delta: number; protein_delta_g: number; carbs_delta_g: number;
-          fat_delta_g: number; fibre_delta_g: number; sugar_delta_g: number;
-          sat_fat_delta_g: number; sodium_delta_mg: number;
-        }) => {
-          const optionId = lookup[delta.group_name]?.[delta.option_name];
-          if (!optionId) return Promise.resolve();
-          return supabase.from("customisation_options").update({
-            calories_delta:  delta.calories_delta,
-            protein_delta_g: delta.protein_delta_g,
-            carbs_delta_g:   delta.carbs_delta_g,
-            fat_delta_g:     delta.fat_delta_g,
-            fibre_delta_g:   delta.fibre_delta_g,
-            sugar_delta_g:   delta.sugar_delta_g,
-            sat_fat_delta_g: delta.sat_fat_delta_g,
-            sodium_delta_mg: delta.sodium_delta_mg,
-          }).eq("id", optionId);
-        })
+        Object.entries(agg).flatMap(([groupName, options]) =>
+          Object.entries(options).map(([optionName, a]) => {
+            const optionId = lookup[groupName]?.[optionName];
+            if (!optionId) return Promise.resolve();
+            return supabase.from("customisation_options").update({
+              calories_delta:  Math.round(mean(a.cal)),
+              protein_delta_g: Math.round(mean(a.prot)    * 10) / 10,
+              carbs_delta_g:   Math.round(mean(a.carbs)   * 10) / 10,
+              fat_delta_g:     Math.round(mean(a.fat)     * 10) / 10,
+              fibre_delta_g:   Math.round(mean(a.fibre)   * 10) / 10,
+              sugar_delta_g:   Math.round(mean(a.sugar)   * 10) / 10,
+              sat_fat_delta_g: Math.round(mean(a.sat_fat) * 10) / 10,
+              sodium_delta_mg: Math.round(mean(a.sodium)),
+            }).eq("id", optionId);
+          })
+        )
       );
 
       // Promote restaurant from "no data" (tier 3) to "community estimate" (tier 2)
@@ -86,11 +133,7 @@ export async function PATCH(req: NextRequest) {
         .single();
 
       if (restaurant?.slug) {
-        await supabase
-          .from("restaurants")
-          .update({ tier: 2 })
-          .eq("id", submission.restaurant_id);
-
+        await supabase.from("restaurants").update({ tier: 2 }).eq("id", submission.restaurant_id);
         revalidatePath(`/restaurants/${restaurant.slug}`);
         if (submission.menu_item_id) {
           revalidatePath(`/restaurants/${restaurant.slug}/build/${submission.menu_item_id}`);
