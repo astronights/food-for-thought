@@ -135,7 +135,16 @@ export async function PATCH(req: NextRequest) {
         )
       );
 
-      extraResponse = { matched, total };
+      extraResponse = {
+        matched,
+        total,
+        debug_agg_keys: Object.entries(agg).flatMap(([g, opts]) =>
+          Object.keys(opts).map((o) => `${g} / ${o}`)
+        ),
+        debug_lookup_keys: Object.entries(lookup).flatMap(([g, opts]) =>
+          Object.keys(opts).map((o) => `${g} / ${o}`)
+        ),
+      };
 
       // Promote restaurant from "no data" (tier 3) to "community estimate" (tier 2)
       const { data: restaurant } = await supabase

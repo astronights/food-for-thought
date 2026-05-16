@@ -187,7 +187,12 @@ function DishDetail({ sub, onUpdate }: { sub: DishSubmission; onUpdate: () => vo
     const json = await res.json();
     setSaving(false);
     if (isBYO && status === "approved" && typeof json.matched === "number") {
-      alert(`Wrote deltas for ${json.matched} of ${json.total} ingredients.${json.matched === 0 ? "\n\nNo options matched — the ingredient names from Gemini may not match the database. Check that the restaurant's option names are correct." : ""}`);
+      let msg = `Wrote deltas for ${json.matched} of ${json.total} ingredients.`;
+      if (json.matched === 0 && json.debug_agg_keys?.length) {
+        msg += `\n\nGemini names:\n${json.debug_agg_keys.join("\n")}`;
+        msg += `\n\nDB names:\n${(json.debug_lookup_keys ?? []).join("\n")}`;
+      }
+      alert(msg);
     }
     onUpdate();
   }
