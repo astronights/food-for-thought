@@ -153,8 +153,9 @@ export async function estimateBYOIngredients(
     generationConfig: { responseMimeType: "application/json", responseSchema: BYO_INGREDIENT_SCHEMA },
   });
 
+  const stripParens = (s: string) => s.replace(/\s*\(.*?\)/g, "").trim();
   const groupContext = groups
-    .map((g) => `  ${g.name} (${g.ui_hint}): ${g.options.join(", ")}`)
+    .map((g) => `  ${stripParens(g.name)} (${g.ui_hint}): ${g.options.join(", ")}`)
     .join("\n");
 
   const result = await model.generateContent([

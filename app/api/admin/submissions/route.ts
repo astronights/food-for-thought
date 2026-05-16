@@ -102,11 +102,14 @@ export async function PATCH(req: NextRequest) {
         .eq("restaurant_id", submission.restaurant_id);
 
       const norm = (s: string) => s.trim().toLowerCase();
+      // Strip parentheticals so "Base (Choose 1)" matches Gemini's "Base"
+      const normGroup = (s: string) => s.replace(/\s*\(.*?\)/g, "").trim().toLowerCase();
       const lookup: Record<string, Record<string, string>> = {};
       for (const g of groups ?? []) {
-        lookup[norm(g.name)] = {};
+        const gKey = normGroup(g.name);
+        if (!lookup[gKey]) lookup[gKey] = {};
         for (const o of (g.customisation_options as { id: string; name: string }[])) {
-          lookup[norm(g.name)][norm(o.name)] = o.id;
+          lookup[gKey][norm(o.name)] = o.id;
         }
       }
 
@@ -118,7 +121,7 @@ export async function PATCH(req: NextRequest) {
         Object.entries(agg).flatMap(([groupName, options]) =>
           Object.entries(options).map(([optionName, a]) => {
             // Use pre-resolved option_id if available; fall back to name matching
-            const optionId = a.option_id || lookup[norm(groupName)]?.[norm(optionName)];
+            const optionId = a.option_id || lookup[normGroup(groupName)]?.[norm(optionName)];
             if (!optionId) return Promise.resolve();
             matched++;
             return supabase.from("customisation_options").update({

@@ -105,10 +105,13 @@ export async function POST(req: NextRequest) {
             ui_hint: g.ui_hint,
             options: (g.customisation_options as { id: string; name: string }[]).map((o) => o.name),
           }));
-          // Build name→id lookup so Gemini's returned names can be resolved to option IDs
+          // Build name→id lookup so Gemini's returned names can be resolved to option IDs.
+          // Strip parentheticals from group names (e.g. "Base (Choose 1)" → "base") to match
+          // what Gemini returns after seeing the cleaned prompt.
           const norm = (s: string) => s.trim().toLowerCase();
+          const normGroup = (s: string) => s.replace(/\s*\(.*?\)/g, "").trim().toLowerCase();
           for (const g of allGroups) {
-            const gKey = norm(g.name);
+            const gKey = normGroup(g.name);
             for (const o of (g.customisation_options as { id: string; name: string }[])) {
               optionIdLookup[`${gKey}|||${norm(o.name)}`] = o.id;
             }
@@ -147,10 +150,11 @@ export async function POST(req: NextRequest) {
     const nutritionRecord = isBYO
       ? (() => {
           const byo = extractionResult as import("@/lib/gemini").BYONutritionEstimate;
+          const normGroup = (s: string) => s.replace(/\s*\(.*?\)/g, "").trim().toLowerCase();
           const norm = (s: string) => s.trim().toLowerCase();
           const ingredientsWithIds = byo.ingredients.map((d) => ({
             ...d,
-            option_id: optionIdLookup[`${norm(d.group_name)}|||${norm(d.option_name)}`] ?? null,
+            option_id: optionIdLookup[`${normGroup(d.group_name)}|||${norm(d.option_name)}`] ?? null,
           }));
           return {
             ai_confidence: byo.total_confidence,
