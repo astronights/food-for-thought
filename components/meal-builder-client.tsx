@@ -62,6 +62,13 @@ export function MealBuilderClient({ restaurant, item, groups }: MealBuilderClien
   const incompleteGroups = groups.filter((g) => !isGroupComplete(g, selections));
   const isComplete = incompleteGroups.length === 0;
 
+  // For BYO items (has_customisation), base_* fields are meaningless (0 or null);
+  // only show numbers once a selected option actually contributes non-zero calories.
+  const hasNutritionData = item.has_customisation
+    ? selectedOptions.some((o) => (o.calories_delta ?? 0) !== 0)
+    : item.base_calories !== null;
+  const isEmpty = !hasNutritionData;
+
   function selectOne(groupId: string, optionId: string) {
     setSelections((prev) => ({ ...prev, [groupId]: optionId }));
   }
@@ -109,6 +116,11 @@ export function MealBuilderClient({ restaurant, item, groups }: MealBuilderClien
           const isInvalid = attempted && isRequired && !isGroupComplete(group, selections);
           const isPickMany = group.ui_hint === "pick_many";
           const currentMany = (selections[group.id] as string[] | undefined) ?? [];
+
+          // Only show data-quality dots when the group has a mix of options with and without deltas
+          const groupHasAnyData = group.options.some((o) => (o.calories_delta ?? 0) !== 0);
+          const groupHasMissingData = group.options.some((o) => (o.calories_delta ?? 0) === 0);
+          const showDataQuality = groupHasAnyData && groupHasMissingData;
 
           return (
             <section key={group.id}>
@@ -205,6 +217,17 @@ export function MealBuilderClient({ restaurant, item, groups }: MealBuilderClien
                         {option.name}
                       </span>
 
+                      {/* Data-quality dot — only shown when the group has mixed coverage */}
+                      {showDataQuality && (
+                        <span
+                          className={`flex-shrink-0 h-1.5 w-1.5 rounded-full ${
+                            (option.calories_delta ?? 0) !== 0
+                              ? "bg-emerald-400"
+                              : "bg-amber-400"
+                          }`}
+                        />
+                      )}
+
                       {/* Nutrient delta */}
                       {(() => {
                         const { delta, unit } = getOptionDelta(option, nutrient);
@@ -263,7 +286,7 @@ export function MealBuilderClient({ restaurant, item, groups }: MealBuilderClien
               {/* Calories */}
               <div className="text-center flex-shrink-0">
                 <div className="text-xl font-bold tabular-nums text-gray-900 dark:text-gray-100">
-                  {totals.calories}
+                  {isEmpty ? <span className="text-gray-300 dark:text-gray-600">—</span> : totals.calories}
                 </div>
                 <div className="text-xs text-gray-400">kcal</div>
               </div>
@@ -273,15 +296,15 @@ export function MealBuilderClient({ restaurant, item, groups }: MealBuilderClien
               {/* Macros */}
               <div className="flex flex-1 justify-around">
                 <div className="text-center">
-                  <div className="text-sm font-bold tabular-nums text-blue-500">{totals.protein_g.toFixed(1)}<span className="text-xs font-normal ml-0.5">g</span></div>
+                  <div className="text-sm font-bold tabular-nums text-blue-500">{isEmpty ? <span className="text-gray-300 dark:text-gray-600">—</span> : <>{totals.protein_g.toFixed(1)}<span className="text-xs font-normal ml-0.5">g</span></>}</div>
                   <div className="text-xs text-gray-400">Protein</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-sm font-bold tabular-nums text-orange-500">{totals.carbs_g.toFixed(1)}<span className="text-xs font-normal ml-0.5">g</span></div>
+                  <div className="text-sm font-bold tabular-nums text-orange-500">{isEmpty ? <span className="text-gray-300 dark:text-gray-600">—</span> : <>{totals.carbs_g.toFixed(1)}<span className="text-xs font-normal ml-0.5">g</span></>}</div>
                   <div className="text-xs text-gray-400">Carbs</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-sm font-bold tabular-nums text-amber-500">{totals.fat_g.toFixed(1)}<span className="text-xs font-normal ml-0.5">g</span></div>
+                  <div className="text-sm font-bold tabular-nums text-amber-500">{isEmpty ? <span className="text-gray-300 dark:text-gray-600">—</span> : <>{totals.fat_g.toFixed(1)}<span className="text-xs font-normal ml-0.5">g</span></>}</div>
                   <div className="text-xs text-gray-400">Fat</div>
                 </div>
               </div>

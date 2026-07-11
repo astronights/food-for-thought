@@ -159,6 +159,11 @@ export function ContributeDishSheet({
   const fileRef = useRef<HTMLInputElement>(null);
   const MAX_IMAGES = 3;
 
+  // Sync name whenever the sheet opens with a (potentially different) dish
+  useEffect(() => {
+    if (open) setName(dishName);
+  }, [open, dishName]);
+
   // Fetch customisation groups when sheet opens for a customisable item
   useEffect(() => {
     if (!open || !hasCustomisation || !menuItemId) return;

@@ -31,10 +31,26 @@ interface RuleSuggestion {
   reason: string;
 }
 
+interface IngredientDelta {
+  group_name: string;
+  option_name: string;
+  option_id?: string | null;
+  calories_delta: number;
+  protein_delta_g: number;
+  carbs_delta_g: number;
+  fat_delta_g: number;
+  fibre_delta_g: number;
+  sugar_delta_g: number;
+  sat_fat_delta_g: number;
+  sodium_delta_mg: number;
+  confidence: number;
+}
+
 interface DishSubmission {
   id: string;
   is_correction_flag: boolean;
   ai_group_suggestions: RuleSuggestion[] | null;
+  ai_ingredient_deltas: IngredientDelta[] | null;
   restaurants: { name: string; slug: string } | null;
   dish_name_raw: string;
   order_description: string;
@@ -140,27 +156,44 @@ function SubmissionImage({ imagePath }: { imagePath: string }) {
 
 // ─── Dish submission detail ───────────────────────────────────────────────────
 
+const deltaFieldCls = "w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-1.5 py-1 text-xs text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-emerald-500";
+
 function DishDetail({ sub, onUpdate }: { sub: DishSubmission; onUpdate: () => void }) {
+  const isBYO = Array.isArray(sub.ai_ingredient_deltas) && sub.ai_ingredient_deltas.length > 0;
+
+  // Regular submission state
   const [cal, setCal] = useState(String(sub.admin_calories ?? sub.ai_calories));
   const [prot, setProt] = useState(String(sub.admin_protein_g ?? sub.ai_protein_g));
   const [carbs, setCarbs] = useState(String(sub.admin_carbs_g ?? sub.ai_carbs_g));
   const [fat, setFat] = useState(String(sub.admin_fat_g ?? sub.ai_fat_g));
   const [sodium, setSodium] = useState(String(sub.admin_sodium_mg ?? sub.ai_sodium_mg));
+
+  // BYO ingredient delta state
+  const [deltas, setDeltas] = useState<IngredientDelta[]>(sub.ai_ingredient_deltas ?? []);
+
   const [notes, setNotes] = useState(sub.admin_notes ?? "");
   const [saving, setSaving] = useState(false);
 
+  function updateDelta(i: number, field: keyof Omit<IngredientDelta, "group_name" | "option_name" | "confidence">, raw: string) {
+    setDeltas((prev) => prev.map((d, idx) => idx === i ? { ...d, [field]: Number(raw) } : d));
+  }
+
   async function submit(status: "approved" | "rejected") {
     setSaving(true);
-    await adminFetch("/api/admin/submissions", {
-      method: "PATCH",
-      body: JSON.stringify({
-        id: sub.id, status, admin_notes: notes,
-        admin_calories: Number(cal), admin_protein_g: Number(prot),
-        admin_carbs_g: Number(carbs), admin_fat_g: Number(fat),
-        admin_sodium_mg: Number(sodium),
-      }),
-    });
+    const body = isBYO
+      ? { id: sub.id, status, admin_notes: notes, ingredient_deltas: deltas }
+      : { id: sub.id, status, admin_notes: notes, admin_calories: Number(cal), admin_protein_g: Number(prot), admin_carbs_g: Number(carbs), admin_fat_g: Number(fat), admin_sodium_mg: Number(sodium) };
+    const res = await adminFetch("/api/admin/submissions", { method: "PATCH", body: JSON.stringify(body) });
+    const json = await res.json();
     setSaving(false);
+    if (isBYO && status === "approved" && typeof json.matched === "number") {
+      let msg = `Wrote deltas for ${json.matched} of ${json.total} ingredients.`;
+      if (json.matched === 0 && json.debug_agg_keys?.length) {
+        msg += `\n\nGemini names:\n${json.debug_agg_keys.join("\n")}`;
+        msg += `\n\nDB names:\n${(json.debug_lookup_keys ?? []).join("\n")}`;
+      }
+      alert(msg);
+    }
     onUpdate();
   }
 
@@ -173,6 +206,13 @@ function DishDetail({ sub, onUpdate }: { sub: DishSubmission; onUpdate: () => vo
             <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">Correction flag on verified data</p>
             <p className="text-xs text-amber-600/70 dark:text-amber-500 mt-0.5">Gemini estimated suggested values from the user&apos;s text. Edit as needed, then approve to log the correction.</p>
           </div>
+        </div>
+      )}
+
+      {isBYO && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/40">
+          <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">Build Your Own</span>
+          <span className="text-xs text-emerald-600/70 dark:text-emerald-500">Approving will write these deltas to each ingredient in the database.</span>
         </div>
       )}
 
@@ -215,29 +255,72 @@ function DishDetail({ sub, onUpdate }: { sub: DishSubmission; onUpdate: () => vo
         </div>
       )}
 
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-xs font-medium text-gray-400">
-            {sub.is_correction_flag ? "Gemini estimate from flag text — editable" : "Nutrition values (editable)"}
-          </p>
-          {sub.is_correction_flag && <ConfidenceBadge score={sub.ai_confidence} />}
+      {/* BYO: per-ingredient delta editor */}
+      {isBYO ? (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-medium text-gray-400">Ingredient deltas (editable)</p>
+            <ConfidenceBadge score={sub.ai_confidence} />
+          </div>
+          <div className="space-y-2 max-h-80 overflow-y-auto">
+            {deltas.map((d, i) => (
+              <div key={i} className="rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-2 py-2 space-y-1.5">
+                <div className="flex items-center justify-between gap-1.5">
+                  <div className="min-w-0">
+                    <span className="text-xs text-gray-400">{d.group_name} · </span>
+                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{d.option_name}</span>
+                  </div>
+                  <ConfidenceBadge score={d.confidence} />
+                </div>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {([
+                    { field: "calories_delta",  label: "kcal" },
+                    { field: "protein_delta_g", label: "prot" },
+                    { field: "carbs_delta_g",   label: "carbs" },
+                    { field: "fat_delta_g",     label: "fat" },
+                    { field: "sodium_delta_mg", label: "Na" },
+                  ] as const).map(({ field, label }) => (
+                    <div key={field}>
+                      <div className="text-[10px] text-gray-400 mb-0.5 text-center">{label}</div>
+                      <input
+                        type="number"
+                        value={d[field]}
+                        onChange={(e) => updateDelta(i, field, e.target.value)}
+                        className={deltaFieldCls}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          {[
-            { label: "Calories", val: cal, set: setCal },
-            { label: "Protein g", val: prot, set: setProt },
-            { label: "Carbs g", val: carbs, set: setCarbs },
-            { label: "Fat g", val: fat, set: setFat },
-            { label: "Sodium mg", val: sodium, set: setSodium },
-          ].map(({ label, val, set }) => (
-            <div key={label}>
-              <label className="text-xs text-gray-400 block mb-0.5">{label}</label>
-              <input value={val} onChange={(e) => set(e.target.value)}
-                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
-            </div>
-          ))}
+      ) : (
+        /* Regular submission: total nutrition editor */
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-medium text-gray-400">
+              {sub.is_correction_flag ? "Gemini estimate from flag text — editable" : "Nutrition values (editable)"}
+            </p>
+            {sub.is_correction_flag && <ConfidenceBadge score={sub.ai_confidence} />}
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: "Calories", val: cal, set: setCal },
+              { label: "Protein g", val: prot, set: setProt },
+              { label: "Carbs g", val: carbs, set: setCarbs },
+              { label: "Fat g", val: fat, set: setFat },
+              { label: "Sodium mg", val: sodium, set: setSodium },
+            ].map(({ label, val, set }) => (
+              <div key={label}>
+                <label className="text-xs text-gray-400 block mb-0.5">{label}</label>
+                <input value={val} onChange={(e) => set(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       <div>
         <label className="text-xs font-medium text-gray-400 mb-1 block">Admin notes</label>

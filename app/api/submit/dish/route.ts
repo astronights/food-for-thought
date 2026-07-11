@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { estimateNutrition, estimateNutritionFromText, type GroupContext } from "@/lib/gemini";
+import { estimateNutrition, estimateNutritionFromText, estimateBYOIngredients, type GroupContext, type GroupWithOptions } from "@/lib/gemini";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 
 export async function POST(req: NextRequest) {
@@ -73,11 +73,59 @@ export async function POST(req: NextRequest) {
       })
     );
 
-    const [nutrition, ...uploadResults] = await Promise.all([
-      estimateNutrition(
-        processed.map((p) => ({ base64: p.base64, mimeType: p.mimeType })),
-        orderDescription
-      ),
+    // Check if this is a BYO menu item — if so, extract per-ingredient deltas
+    let isBYO = false;
+    let byoGroups: GroupWithOptions[] = [];
+    const optionIdLookup: Record<string, string> = {};
+
+    if (menuItemId) {
+      const { data: menuItem } = await getSupabaseAdmin()
+        .from("menu_items")
+        .select("has_customisation")
+        .eq("id", menuItemId)
+        .single();
+
+      if (menuItem?.has_customisation) {
+        const [{ data: itemGroups }, { data: restGroups }] = await Promise.all([
+          getSupabaseAdmin()
+            .from("customisation_groups")
+            .select("name, ui_hint, customisation_options(id, name)")
+            .eq("menu_item_id", menuItemId),
+          getSupabaseAdmin()
+            .from("customisation_groups")
+            .select("name, ui_hint, customisation_options(id, name)")
+            .eq("restaurant_id", restaurantId)
+            .is("menu_item_id", null),
+        ]);
+        const allGroups = [...(itemGroups ?? []), ...(restGroups ?? [])];
+        if (allGroups.length > 0) {
+          isBYO = true;
+          byoGroups = allGroups.map((g) => ({
+            name: g.name,
+            ui_hint: g.ui_hint,
+            options: (g.customisation_options as { id: string; name: string }[]).map((o) => o.name),
+          }));
+          // Build name→id lookup so Gemini's returned names can be resolved to option IDs.
+          // Strip parentheticals from group names (e.g. "Base (Choose 1)" → "base") to match
+          // what Gemini returns after seeing the cleaned prompt.
+          const norm = (s: string) => s.trim().toLowerCase();
+          const normGroup = (s: string) => s.replace(/\s*\(.*?\)/g, "").trim().toLowerCase();
+          for (const g of allGroups) {
+            const gKey = normGroup(g.name);
+            for (const o of (g.customisation_options as { id: string; name: string }[])) {
+              optionIdLookup[`${gKey}|||${norm(o.name)}`] = o.id;
+            }
+          }
+        }
+      }
+    }
+
+    const imageInputs = processed.map((p) => ({ base64: p.base64, mimeType: p.mimeType }));
+
+    const [extractionResult, ...uploadResults] = await Promise.all([
+      isBYO
+        ? estimateBYOIngredients(imageInputs, orderDescription, byoGroups)
+        : estimateNutrition(imageInputs, orderDescription),
       ...processed.map((p) =>
         getSupabaseAdmin().storage.from("submission-images").upload(p.path, p.buf, { contentType: p.mimeType })
       ),
@@ -87,28 +135,54 @@ export async function POST(req: NextRequest) {
       .map((r, i) => (r.error ? null : processed[i].path))
       .filter(Boolean) as string[];
 
-    const { error } = await getSupabaseAdmin().from("crowdsource_submissions").insert({
+    const baseRecord = {
       restaurant_id: restaurantId,
       menu_item_id: menuItemId || null,
       dish_name_raw: dishName,
       order_description: orderDescription,
-      ai_calories: nutrition.calories,
-      ai_protein_g: nutrition.protein_g,
-      ai_carbs_g: nutrition.carbs_g,
-      ai_fat_g: nutrition.fat_g,
-      ai_fibre_g: nutrition.fibre_g,
-      ai_sugar_g: nutrition.sugar_g,
-      ai_sat_fat_g: nutrition.sat_fat_g,
-      ai_sodium_mg: nutrition.sodium_mg,
-      ai_confidence: nutrition.confidence,
-      ai_notes: nutrition.notes,
-      ai_price_sgd: nutrition.price_sgd || null,
-      ai_weight_g: nutrition.weight_g || null,
       is_correction_flag: false,
       submitter_session_id: sessionId,
       image_processed: true,
       image_path: storedPaths[0] ?? null,
       image_paths: storedPaths,
+    };
+
+    const nutritionRecord = isBYO
+      ? (() => {
+          const byo = extractionResult as import("@/lib/gemini").BYONutritionEstimate;
+          const normGroup = (s: string) => s.replace(/\s*\(.*?\)/g, "").trim().toLowerCase();
+          const norm = (s: string) => s.trim().toLowerCase();
+          const ingredientsWithIds = byo.ingredients.map((d) => ({
+            ...d,
+            option_id: optionIdLookup[`${normGroup(d.group_name)}|||${norm(d.option_name)}`] ?? null,
+          }));
+          return {
+            ai_confidence: byo.total_confidence,
+            ai_notes: byo.notes,
+            ai_ingredient_deltas: ingredientsWithIds,
+          };
+        })()
+      : (() => {
+          const n = extractionResult as import("@/lib/gemini").NutritionEstimate;
+          return {
+            ai_calories: n.calories,
+            ai_protein_g: n.protein_g,
+            ai_carbs_g: n.carbs_g,
+            ai_fat_g: n.fat_g,
+            ai_fibre_g: n.fibre_g,
+            ai_sugar_g: n.sugar_g,
+            ai_sat_fat_g: n.sat_fat_g,
+            ai_sodium_mg: n.sodium_mg,
+            ai_confidence: n.confidence,
+            ai_notes: n.notes,
+            ai_price_sgd: n.price_sgd || null,
+            ai_weight_g: n.weight_g || null,
+          };
+        })();
+
+    const { error } = await getSupabaseAdmin().from("crowdsource_submissions").insert({
+      ...baseRecord,
+      ...nutritionRecord,
     });
 
     if (error) throw error;

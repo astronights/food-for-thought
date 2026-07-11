@@ -85,6 +85,103 @@ export interface GroupContext {
   max_selections: number | null;
 }
 
+// ─── BYO ingredient delta estimation ─────────────────────────────────────────
+
+export interface GroupWithOptions {
+  name: string;
+  ui_hint: string;
+  options: string[];
+}
+
+export interface IngredientDelta {
+  group_name: string;
+  option_name: string;
+  calories_delta: number;
+  protein_delta_g: number;
+  carbs_delta_g: number;
+  fat_delta_g: number;
+  fibre_delta_g: number;
+  sugar_delta_g: number;
+  sat_fat_delta_g: number;
+  sodium_delta_mg: number;
+  confidence: number;
+}
+
+export interface BYONutritionEstimate {
+  ingredients: IngredientDelta[];
+  total_confidence: number;
+  notes: string;
+}
+
+const BYO_INGREDIENT_SCHEMA: Schema = {
+  type: SchemaType.OBJECT,
+  properties: {
+    ingredients: {
+      type: SchemaType.ARRAY,
+      description: "One entry per identified ingredient mapped to a known menu option",
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          group_name:      { type: SchemaType.STRING,  description: "Customisation group name, e.g. Base, Protein, Sides" },
+          option_name:     { type: SchemaType.STRING,  description: "Exact option name as listed in the menu" },
+          calories_delta:  { type: SchemaType.INTEGER, description: "Calorie contribution of this ingredient in kcal" },
+          protein_delta_g: { type: SchemaType.NUMBER,  description: "Protein contribution in grams" },
+          carbs_delta_g:   { type: SchemaType.NUMBER,  description: "Carbohydrate contribution in grams" },
+          fat_delta_g:     { type: SchemaType.NUMBER,  description: "Fat contribution in grams" },
+          fibre_delta_g:   { type: SchemaType.NUMBER,  description: "Dietary fibre contribution in grams" },
+          sugar_delta_g:   { type: SchemaType.NUMBER,  description: "Sugar contribution in grams" },
+          sat_fat_delta_g: { type: SchemaType.NUMBER,  description: "Saturated fat contribution in grams" },
+          sodium_delta_mg: { type: SchemaType.INTEGER, description: "Sodium contribution in milligrams" },
+          confidence:      { type: SchemaType.NUMBER,  description: "Confidence in identifying this specific ingredient: 0.0 to 1.0" },
+        },
+        required: ["group_name", "option_name", "calories_delta", "protein_delta_g", "carbs_delta_g", "fat_delta_g", "fibre_delta_g", "sugar_delta_g", "sat_fat_delta_g", "sodium_delta_mg", "confidence"],
+      },
+    },
+    total_confidence: { type: SchemaType.NUMBER,  description: "Overall confidence across the full extraction: 0.0 to 1.0" },
+    notes:            { type: SchemaType.STRING,  description: "What was clearly visible, what was uncertain, and any portion assumptions" },
+  },
+  required: ["ingredients", "total_confidence", "notes"],
+};
+
+export async function estimateBYOIngredients(
+  images: ImageInput[],
+  orderDescription: string,
+  groups: GroupWithOptions[]
+): Promise<BYONutritionEstimate> {
+  const model = genAI.getGenerativeModel({
+    model: MODEL,
+    generationConfig: { responseMimeType: "application/json", responseSchema: BYO_INGREDIENT_SCHEMA },
+  });
+
+  const stripParens = (s: string) => s.replace(/\s*\(.*?\)/g, "").trim();
+  const groupContext = groups
+    .map((g) => `  ${stripParens(g.name)} (${g.ui_hint}): ${g.options.join(", ")}`)
+    .join("\n");
+
+  const result = await model.generateContent([
+    ...images.map((img) => ({ inlineData: { data: img.base64, mimeType: img.mimeType } })),
+    {
+      text: `You are a nutrition estimation assistant for a Singapore Build Your Own Bowl restaurant.
+
+Examine the photo of the assembled bowl and the customer's order description. Identify each ingredient present and map it to one of the known menu options below. For each identified ingredient, estimate its individual nutritional contribution (delta) — i.e. how much that single component adds to the bowl.
+
+Known menu options:
+${groupContext}
+
+Rules:
+- Only include ingredients you can identify in the photo or that are clearly stated in the description.
+- Match option_name exactly to the name as listed above.
+- Estimate each component's contribution based on Singapore standard portion sizes.
+- If an ingredient is hard to see clearly, still include it with a lower confidence score.
+- Do not include ingredients not on the known options list.
+
+Order description: ${orderDescription}`,
+    },
+  ]);
+
+  return JSON.parse(result.response.text()) as BYONutritionEstimate;
+}
+
 export async function estimateNutritionFromText(
   flagDescription: string,
   groups?: GroupContext[]
