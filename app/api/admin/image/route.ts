@@ -1,19 +1,44 @@
+import { get } from "@vercel/blob";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/require-admin";
-import { getSupabaseAdmin } from "@/lib/supabase-admin";
 
 export async function GET(req: NextRequest) {
-  const user = await requireAdmin(req);
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const user = await requireAdmin();
+
+  if (!user) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    );
+  }
 
   const path = req.nextUrl.searchParams.get("path");
-  if (!path) return NextResponse.json({ error: "No path specified" }, { status: 400 });
 
-  const { data, error } = await getSupabaseAdmin()
-    .storage
-    .from("submission-images")
-    .createSignedUrl(path, 3600); // 1-hour signed URL
+  if (!path) {
+    return NextResponse.json(
+      { error: "No path specified" },
+      { status: 400 }
+    );
+  }
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ url: data.signedUrl });
+  const result = await get(path, {
+    access: "private",
+  });
+
+  if (!result || result.statusCode !== 200) {
+    return NextResponse.json(
+      { error: "Image not found" },
+      { status: 404 }
+    );
+  }
+
+  return new NextResponse(result.stream, {
+    headers: {
+      "Content-Type":
+        result.blob.contentType ?? "application/octet-stream",
+      "X-Content-Type-Options": "nosniff",
+      ETag: result.blob.etag,
+      "Cache-Control": "private, no-cache",
+    },
+  });
 }

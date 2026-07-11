@@ -1,66 +1,89 @@
 import { notFound } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { sql } from "@/lib/db";
 import type { MenuItem, Restaurant, GroupWithOptions } from "@/lib/types";
 import { MealBuilderClient } from "@/components/meal-builder-client";
 
-async function getBuilderData(slug: string, itemId: string): Promise<{
+async function getBuilderData(
+  slug: string,
+  itemId: string
+): Promise<{
   restaurant: Restaurant;
   item: MenuItem;
   groups: GroupWithOptions[];
 } | null> {
-  const { data: restaurant } = await supabase
-    .from("restaurants")
-    .select("*")
-    .eq("slug", slug)
-    .single();
+  const restaurantRows = await sql`
+    SELECT *
+    FROM restaurants
+    WHERE slug = ${slug}
+    LIMIT 1
+  `;
+
+  const restaurant = restaurantRows[0] as Restaurant | undefined;
 
   if (!restaurant) return null;
 
-  const { data: item } = await supabase
-    .from("menu_items")
-    .select("*")
-    .eq("id", itemId)
-    .eq("restaurant_id", restaurant.id)
-    .single();
+  const itemRows = await sql`
+    SELECT *
+    FROM menu_items
+    WHERE id = ${itemId}
+      AND restaurant_id = ${restaurant.id}
+    LIMIT 1
+  `;
+
+  const item = itemRows[0] as MenuItem | undefined;
 
   if (!item) return null;
 
-  // Two explicit queries — avoids PostgREST .or() + IS NULL unreliability
-  const [{ data: itemGroups }, { data: restaurantGroups }] = await Promise.all([
-    supabase.from("customisation_groups").select("*")
-      .eq("menu_item_id", itemId)
-      .order("display_order", { ascending: true }),
-    supabase.from("customisation_groups").select("*")
-      .eq("restaurant_id", restaurant.id)
-      .is("menu_item_id", null)
-      .order("display_order", { ascending: true }),
-  ]);
+  const groups = await sql`
+    SELECT *
+    FROM customisation_groups
+    WHERE menu_item_id = ${itemId}
+       OR (
+         restaurant_id = ${restaurant.id}
+         AND menu_item_id IS NULL
+       )
+    ORDER BY display_order ASC
+  `;
 
-  const groups = [
-    ...(itemGroups ?? []),
-    ...(restaurantGroups ?? []),
-  ].sort((a, b) => a.display_order - b.display_order);
+  if (groups.length === 0) {
+    return {
+      restaurant,
+      item,
+      groups: [],
+    };
+  }
 
-  if (groups.length === 0) return { restaurant, item, groups: [] };
+  const groupIds = groups.map((group) => group.id as string);
 
-  const groupIds = groups.map((g) => g.id);
-  const { data: options } = await supabase
-    .from("customisation_options")
-    .select("*")
-    .in("group_id", groupIds)
-    .eq("is_available", true)
-    .order("display_order", { ascending: true });
+  const options = await sql`
+    SELECT *
+    FROM customisation_options
+    WHERE group_id = ANY(${groupIds})
+      AND is_available = true
+    ORDER BY display_order ASC
+  `;
 
-  const groupsWithOptions: GroupWithOptions[] = groups.map((g) => ({
-    ...g,
-    options: (options ?? []).filter((o) => o.group_id === g.id),
-  }));
+  const groupsWithOptions = groups.map((group) => ({
+    ...group,
+    options: options.filter(
+      (option) => option.group_id === group.id
+    ),
+  })) as GroupWithOptions[];
 
-  return { restaurant, item, groups: groupsWithOptions };
+  return {
+    restaurant,
+    item,
+    groups: groupsWithOptions,
+  };
 }
 
 export default async function BuilderPage(
-  props: PageProps<"/restaurants/[slug]/build/[itemId]">
+  props: {
+  params: Promise<{
+    slug: string;
+    itemId: string;
+  }>;
+}
 ) {
   const { slug, itemId } = await props.params;
   const data = await getBuilderData(slug, itemId);

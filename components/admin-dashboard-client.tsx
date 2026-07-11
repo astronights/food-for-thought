@@ -2,21 +2,25 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { authClient } from "@/lib/auth/client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { CheckCircle, XCircle, ChevronDown, ChevronUp, LogOut, Plus, Trash2, ImageIcon, Flag } from "lucide-react";
 
 // ─── Auth helper ─────────────────────────────────────────────────────────────
 
-async function adminFetch(url: string, options: RequestInit = {}) {
-  const { data: { session } } = await supabase.auth.getSession();
+async function adminFetch(
+  url: string,
+  options: RequestInit = {}
+) {
   return fetch(url, {
     ...options,
+    credentials: "include",
     headers: {
       ...options.headers,
-      ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
+      ...(options.body && !(options.body instanceof FormData)
+        ? { "Content-Type": "application/json" }
+        : {}),
     },
   });
 }
@@ -613,11 +617,19 @@ export function AdminDashboardClient() {
   const [activeTab, setActiveTab] = useState<TabFilter>("dishes");
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (!data.user) { router.push("/admin/login"); return; }
-      setUser(data.user as { email: string });
+    authClient.getSession().then(({ data }) => {
+      if (!data?.user) {
+        router.push("/admin/login");
+        return;
+      }
+
+      setUser({
+        email: data.user.email,
+      });
+
       loadData();
     });
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -633,7 +645,7 @@ export function AdminDashboardClient() {
   }
 
   async function signOut() {
-    await supabase.auth.signOut();
+    await authClient.signOut();
     router.push("/admin/login");
   }
 

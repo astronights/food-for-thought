@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { sql } from "@/lib/db";
 import type { Restaurant } from "@/lib/types";
 import { HomeClient } from "@/components/home-client";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -7,17 +7,18 @@ import { InfoButton } from "@/components/info-sheet";
 export const revalidate = 3600;
 
 async function getRestaurants(): Promise<Restaurant[]> {
-  const { data, error } = await supabase
-    .from("restaurants")
-    .select("*")
-    .order("tier", { ascending: true })
-    .order("name", { ascending: true });
+  try {
+    const rows = await sql`
+      SELECT *
+      FROM restaurants
+      ORDER BY tier ASC, name ASC
+    `;
 
-  if (error) {
-    console.error("Failed to load restaurants:", error.message);
+    return rows as Restaurant[];
+  } catch (error) {
+    console.error("Failed to load restaurants:", error);
     return [];
   }
-  return data ?? [];
 }
 
 export default async function HomePage() {

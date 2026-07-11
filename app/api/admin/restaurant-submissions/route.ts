@@ -1,147 +1,299 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { getSupabaseAdmin } from "@/lib/supabase-admin";
+import { sql } from "@/lib/db";
 import { requireAdmin } from "@/lib/require-admin";
 
-export async function GET(req: NextRequest) {
-  const user = await requireAdmin(req);
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export async function GET() {
+  const user = await requireAdmin();
 
-  const { data, error } = await getSupabaseAdmin()
-    .from("restaurant_submissions")
-    .select("*")
-    .order("created_at", { ascending: false });
+  if (!user) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    );
+  }
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data);
+  try {
+    const submissions = await sql`
+      SELECT *
+      FROM restaurant_submissions
+      ORDER BY created_at DESC
+    `;
+
+    return NextResponse.json(submissions);
+  } catch (error) {
+    console.error("Failed to load restaurant submissions:", error);
+
+    return NextResponse.json(
+      { error: "Failed to load submissions" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function PATCH(req: NextRequest) {
-  const user = await requireAdmin(req);
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const user = await requireAdmin();
 
-  const body = await req.json();
-  const { id, status, admin_notes } = body;
-
-  const { error } = await getSupabaseAdmin()
-    .from("restaurant_submissions")
-    .update({ status, admin_notes, reviewed_at: new Date().toISOString() })
-    .eq("id", id);
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ success: true });
-}
-
-export async function POST(req: NextRequest) {
-  const user = await requireAdmin(req);
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const body = await req.json();
-  const { submission_id, name, slug, cuisine_tags, location_tags, tier, edited_dishes, edited_groups } = body;
-
-  const { data: restaurant, error: rErr } = await getSupabaseAdmin()
-    .from("restaurants")
-    .insert({ name, slug, cuisine_tags, location_tags, tier: tier ?? 3 })
-    .select()
-    .single();
-
-  if (rErr) return NextResponse.json({ error: rErr.message }, { status: 500 });
-
-  const { data: submission } = await getSupabaseAdmin()
-    .from("restaurant_submissions")
-    .select("ai_extracted_dishes")
-    .eq("id", submission_id)
-    .single();
-
-  // ai_extracted_dishes may be the full MenuExtract object or a legacy dishes array
-  const extract = submission?.ai_extracted_dishes as Record<string, unknown> | null;
-  const isBuildYourOwn =
-    extract && !Array.isArray(extract) && extract.menu_type === "build_your_own";
-
-  if (isBuildYourOwn) {
-    // Create a single customisable menu item then seed its groups + options
-    const { data: menuItem } = await getSupabaseAdmin()
-      .from("menu_items")
-      .insert({
-        restaurant_id: restaurant.id,
-        name: "Build Your Own",
-        description: extract.meal_structure as string || null,
-        category: "Customise",
-        has_customisation: true,
-        is_available: true,
-        data_source: "crowdsourced",
-        display_order: 0,
-      })
-      .select()
-      .single();
-
-    if (menuItem) {
-      // Prefer admin-edited groups if provided
-      const groups = (edited_groups ?? extract.customisation_groups) as {
-        name: string; ui_hint: string; max_selections: number;
-        options: { name: string; price_delta_sgd: number }[];
-      }[];
-
-      for (let gi = 0; gi < groups.length; gi++) {
-        const g = groups[gi];
-        const { data: group } = await getSupabaseAdmin()
-          .from("customisation_groups")
-          .insert({
-            menu_item_id: menuItem.id,
-            restaurant_id: restaurant.id,
-            name: g.name,
-            ui_hint: g.ui_hint,
-            min_selections: g.ui_hint === "pick_one_required" ? 1 : 0,
-            max_selections: g.ui_hint === "pick_many" ? null : (g.max_selections || null),
-            display_order: gi,
-          })
-          .select()
-          .single();
-
-        if (group && g.options?.length) {
-          await getSupabaseAdmin().from("customisation_options").insert(
-            g.options.map((o, oi) => ({
-              group_id: group.id,
-              name: o.name,
-              price_delta_sgd: o.price_delta_sgd || null,
-              display_order: oi,
-            }))
-          );
-        }
-      }
-    }
-  } else {
-    // Regular menu — seed dish stubs
-    // Prefer admin-edited dish list if provided, otherwise fall back to AI extract
-    const dishes: { name: string; category: string | null }[] = edited_dishes?.length
-      ? edited_dishes
-      : Array.isArray(extract)
-        ? extract
-        : ((extract?.dishes as { name: string; category: string | null }[]) ?? []);
-
-    if (dishes.length > 0) {
-      await getSupabaseAdmin().from("menu_items").insert(
-        dishes.map((d, i) => ({
-          restaurant_id: restaurant.id,
-          name: d.name,
-          category: d.category ?? "Menu",
-          has_customisation: false,
-          is_available: true,
-          data_source: "crowdsourced" as const,
-          display_order: i,
-        }))
-      );
-    }
+  if (!user) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    );
   }
 
-  await getSupabaseAdmin()
-    .from("restaurant_submissions")
-    .update({ status: "approved", reviewed_at: new Date().toISOString() })
-    .eq("id", submission_id);
+  try {
+    const body = await req.json();
+    const { id, status, admin_notes } = body;
 
-  // Bust the cached home page and the new restaurant's page so they appear immediately
-  revalidatePath("/");
-  revalidatePath(`/restaurants/${restaurant.slug}`);
+    await sql`
+      UPDATE restaurant_submissions
+      SET
+        status = ${status},
+        admin_notes = ${admin_notes || null},
+        reviewed_at = NOW()
+      WHERE id = ${id}
+    `;
 
-  return NextResponse.json({ success: true, restaurant, is_build_your_own: isBuildYourOwn });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Failed to update restaurant submission:", error);
+
+    return NextResponse.json(
+      { error: "Failed to update submission" },
+      { status: 500 }
+    );
+  }
+}
+
+type ExtractGroup = {
+  name: string;
+  ui_hint: string;
+  max_selections: number;
+  options: {
+    name: string;
+    price_delta_sgd: number;
+  }[];
+};
+
+type ExtractDish = {
+  name: string;
+  category: string | null;
+};
+
+type MenuExtract = {
+  menu_type?: string;
+  meal_structure?: string;
+  dishes?: ExtractDish[];
+  customisation_groups?: ExtractGroup[];
+};
+
+export async function POST(req: NextRequest) {
+  const user = await requireAdmin();
+
+  if (!user) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    );
+  }
+
+  try {
+    const body = await req.json();
+
+    const {
+      submission_id,
+      name,
+      slug,
+      cuisine_tags,
+      location_tags,
+      tier,
+      edited_dishes,
+      edited_groups,
+    } = body;
+
+    const restaurantRows = await sql`
+      INSERT INTO restaurants (
+        name,
+        slug,
+        cuisine_tags,
+        location_tags,
+        tier
+      )
+      VALUES (
+        ${name},
+        ${slug},
+        ${cuisine_tags},
+        ${location_tags},
+        ${tier ?? 3}
+      )
+      RETURNING *
+    `;
+
+    const restaurant = restaurantRows[0];
+
+    const submissionRows = await sql`
+      SELECT ai_extracted_dishes
+      FROM restaurant_submissions
+      WHERE id = ${submission_id}
+      LIMIT 1
+    `;
+
+    const rawExtract =
+      submissionRows[0]?.ai_extracted_dishes ?? null;
+
+    const extract = rawExtract as MenuExtract | ExtractDish[] | null;
+
+    const isBuildYourOwn =
+      extract !== null &&
+      !Array.isArray(extract) &&
+      extract.menu_type === "build_your_own";
+
+    if (isBuildYourOwn && !Array.isArray(extract)) {
+      const menuItemRows = await sql`
+        INSERT INTO menu_items (
+          restaurant_id,
+          name,
+          description,
+          category,
+          has_customisation,
+          is_available,
+          data_source,
+          display_order
+        )
+        VALUES (
+          ${restaurant.id},
+          'Build Your Own',
+          ${extract.meal_structure || null},
+          'Customise',
+          true,
+          true,
+          'crowdsourced',
+          0
+        )
+        RETURNING id
+      `;
+
+      const menuItem = menuItemRows[0];
+
+      const groups: ExtractGroup[] =
+        edited_groups ??
+        extract.customisation_groups ??
+        [];
+
+      for (let gi = 0; gi < groups.length; gi++) {
+        const group = groups[gi];
+
+        const groupRows = await sql`
+          INSERT INTO customisation_groups (
+            menu_item_id,
+            restaurant_id,
+            name,
+            ui_hint,
+            min_selections,
+            max_selections,
+            display_order
+          )
+          VALUES (
+            ${menuItem.id},
+            ${restaurant.id},
+            ${group.name},
+            ${group.ui_hint},
+            ${
+              group.ui_hint === "pick_one_required"
+                ? 1
+                : 0
+            },
+            ${
+              group.ui_hint === "pick_many"
+                ? null
+                : group.max_selections || null
+            },
+            ${gi}
+          )
+          RETURNING id
+        `;
+
+        const insertedGroup = groupRows[0];
+
+        for (
+          let oi = 0;
+          oi < (group.options ?? []).length;
+          oi++
+        ) {
+          const option = group.options[oi];
+
+          await sql`
+            INSERT INTO customisation_options (
+              group_id,
+              name,
+              price_delta_sgd,
+              display_order
+            )
+            VALUES (
+              ${insertedGroup.id},
+              ${option.name},
+              ${option.price_delta_sgd || null},
+              ${oi}
+            )
+          `;
+        }
+      }
+    } else {
+      const dishes: ExtractDish[] =
+        edited_dishes?.length
+          ? edited_dishes
+          : Array.isArray(extract)
+            ? extract
+            : extract?.dishes ?? [];
+
+      for (let i = 0; i < dishes.length; i++) {
+        const dish = dishes[i];
+
+        await sql`
+          INSERT INTO menu_items (
+            restaurant_id,
+            name,
+            category,
+            has_customisation,
+            is_available,
+            data_source,
+            display_order
+          )
+          VALUES (
+            ${restaurant.id},
+            ${dish.name},
+            ${dish.category ?? "Menu"},
+            false,
+            true,
+            'crowdsourced',
+            ${i}
+          )
+        `;
+      }
+    }
+
+    await sql`
+      UPDATE restaurant_submissions
+      SET
+        status = 'approved',
+        reviewed_at = NOW()
+      WHERE id = ${submission_id}
+    `;
+
+    revalidatePath("/");
+    revalidatePath(`/restaurants/${restaurant.slug}`);
+
+    return NextResponse.json({
+      success: true,
+      restaurant,
+      is_build_your_own: isBuildYourOwn,
+    });
+  } catch (error) {
+    console.error("Restaurant approval failed:", error);
+
+    return NextResponse.json(
+      { error: "Restaurant approval failed" },
+      { status: 500 }
+    );
+  }
 }

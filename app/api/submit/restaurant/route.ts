@@ -1,20 +1,32 @@
+import { put } from "@vercel/blob";
 import { NextRequest, NextResponse } from "next/server";
 import { readMenu, type MenuExtract } from "@/lib/gemini";
-import { getSupabaseAdmin } from "@/lib/supabase-admin";
+import { sql } from "@/lib/db";
 
 function toTitleCase(str: string): string {
-  return str.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+  return str
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function titleCaseExtract(extract: MenuExtract): MenuExtract {
   return {
     ...extract,
-    restaurant_name: extract.restaurant_name ? toTitleCase(extract.restaurant_name) : extract.restaurant_name,
-    dishes: extract.dishes.map((d) => ({ ...d, name: toTitleCase(d.name), category: toTitleCase(d.category) })),
+    restaurant_name: extract.restaurant_name
+      ? toTitleCase(extract.restaurant_name)
+      : extract.restaurant_name,
+    dishes: extract.dishes.map((d) => ({
+      ...d,
+      name: toTitleCase(d.name),
+      category: toTitleCase(d.category),
+    })),
     customisation_groups: extract.customisation_groups.map((g) => ({
       ...g,
       name: toTitleCase(g.name),
-      options: g.options.map((o) => ({ ...o, name: toTitleCase(o.name) })),
+      options: g.options.map((o) => ({
+        ...o,
+        name: toTitleCase(o.name),
+      })),
     })),
   };
 }
@@ -22,63 +34,112 @@ function titleCaseExtract(extract: MenuExtract): MenuExtract {
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
+
     const restaurantName = formData.get("restaurant_name") as string;
-    const locationDescription = formData.get("location_description") as string;
-    const cuisineDescription = formData.get("cuisine_description") as string;
-    const submitterNotes = (formData.get("notes") as string | null) ?? "";
+    const locationDescription = formData.get(
+      "location_description"
+    ) as string;
+    const cuisineDescription = formData.get(
+      "cuisine_description"
+    ) as string;
+    const submitterNotes =
+      (formData.get("notes") as string | null) ?? "";
     const sessionId = formData.get("session_id") as string;
 
     if (!restaurantName) {
-      return NextResponse.json({ error: "Restaurant name is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Restaurant name is required" },
+        { status: 400 }
+      );
     }
 
-    let menuExtract = null;
-    let aiNotes = null;
+    let menuExtract: MenuExtract | null = null;
+    let aiNotes: string | null = null;
     let storedPaths: string[] = [];
 
-    const imageFiles = (formData.getAll("images") as File[]).filter((f) => f && f.size > 0).slice(0, 3);
+    const imageFiles = (
+      formData.getAll("images") as File[]
+    )
+      .filter((file) => file && file.size > 0)
+      .slice(0, 3);
 
     if (imageFiles.length > 0) {
       const processed = await Promise.all(
         imageFiles.map(async (file) => {
           const buf = Buffer.from(await file.arrayBuffer());
           const ext = file.type.split("/")[1] ?? "jpg";
-          const path = `menus/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-          return { buf, mimeType: file.type, base64: buf.toString("base64"), path };
+          const path =
+            `menus/${Date.now()}-` +
+            `${Math.random().toString(36).slice(2)}.${ext}`;
+
+          return {
+            buf,
+            mimeType: file.type,
+            base64: buf.toString("base64"),
+            path,
+          };
         })
       );
 
-      const [menuData, ...uploadResults] = await Promise.all([
-        readMenu(processed.map((p) => ({ base64: p.base64, mimeType: p.mimeType })), submitterNotes),
-        ...processed.map((p) =>
-          getSupabaseAdmin().storage.from("submission-images").upload(p.path, p.buf, { contentType: p.mimeType })
-        ),
-      ]);
+      const menuData = await readMenu(
+        processed.map((item) => ({
+          base64: item.base64,
+          mimeType: item.mimeType,
+        })),
+        submitterNotes
+      );
 
       menuExtract = titleCaseExtract(menuData);
       aiNotes = menuData.notes;
-      storedPaths = uploadResults
-        .map((r, i) => (r.error ? null : processed[i].path))
-        .filter(Boolean) as string[];
+
+      const uploads = await Promise.all(
+        processed.map((item) =>
+          put(item.path, item.buf, {
+            access: "private",
+            contentType: item.mimeType,
+            addRandomSuffix: false,
+          })
+        )
+      );
+
+      storedPaths = uploads.map((blob) => blob.pathname);
     }
 
-    const { error } = await getSupabaseAdmin().from("restaurant_submissions").insert({
-      restaurant_name: restaurantName,
-      location_description: locationDescription || null,
-      cuisine_description: cuisineDescription || null,
-      ai_extracted_dishes: menuExtract,
-      ai_notes: aiNotes,
-      submitter_notes: submitterNotes || null,
-      submitter_session_id: sessionId,
-      image_processed: !!menuExtract,
-      image_path: storedPaths[0] ?? null,
-      image_paths: storedPaths,
-    });
+    await sql`
+      INSERT INTO restaurant_submissions (
+        restaurant_name,
+        location_description,
+        cuisine_description,
+        ai_extracted_dishes,
+        ai_notes,
+        submitter_notes,
+        submitter_session_id,
+        image_processed,
+        image_path,
+        image_paths
+      )
+      VALUES (
+        ${restaurantName},
+        ${locationDescription || null},
+        ${cuisineDescription || null},
+        ${menuExtract ? JSON.stringify(menuExtract) : null}::jsonb,
+        ${aiNotes},
+        ${submitterNotes || null},
+        ${sessionId},
+        ${!!menuExtract},
+        ${storedPaths[0] ?? null},
+        ${storedPaths},
+        ${storedPaths}
+      )
+    `;
 
-    if (error) throw error;
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("Restaurant submission error:", err);
-    return NextResponse.json({ error: "Submission failed" }, { status: 500 });
+
+    return NextResponse.json(
+      { error: "Submission failed" },
+      { status: 500 }
+    );
   }
 }

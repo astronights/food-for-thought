@@ -5,7 +5,6 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Camera, CheckCircle } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 import { compressImage } from "@/lib/compress-image";
 import type { GroupWithOptions } from "@/lib/types";
 
@@ -165,37 +164,42 @@ export function ContributeDishSheet({
   }, [open, dishName]);
 
   // Fetch customisation groups when sheet opens for a customisable item
-  useEffect(() => {
-    if (!open || !hasCustomisation || !menuItemId) return;
-    setLoadingGroups(true);
-    Promise.all([
-      supabase.from("customisation_groups").select("*, customisation_options(*)")
-        .eq("menu_item_id", menuItemId)
-        .order("display_order"),
-      supabase.from("customisation_groups").select("*, customisation_options(*)")
-        .eq("restaurant_id", restaurantId)
-        .is("menu_item_id", null)
-        .order("display_order"),
-    ]).then(([{ data: itemGroups }, { data: restaurantGroups }]) => {
-      const data = [
-        ...(itemGroups ?? []),
-        ...(restaurantGroups ?? []),
-      ].sort((a, b) => a.display_order - b.display_order);
-      return { data }; })
-      .then(({ data }) => {
-        if (data) {
-          setGroups(
-            data.map((g) => ({
-              ...g,
-              options: (g.customisation_options as GroupWithOptions["options"]).sort(
-                (a, b) => a.display_order - b.display_order
-              ),
-            }))
-          );
-        }
-        setLoadingGroups(false);
-      });
-  }, [open, hasCustomisation, menuItemId]);
+useEffect(() => {
+  if (!open || !hasCustomisation || !menuItemId) return;
+
+  setLoadingGroups(true);
+
+  const params = new URLSearchParams({
+    menuItemId,
+    restaurantId,
+  });
+
+  fetch(`/api/customisation-groups?${params}`)
+    .then((res) => {
+      if (!res.ok) {
+        throw new Error(
+          "Failed to load customisation groups"
+        );
+      }
+
+      return res.json();
+    })
+    .then((data: GroupWithOptions[]) => {
+      setGroups(data);
+    })
+    .catch((error) => {
+      console.error(error);
+      setGroups([]);
+    })
+    .finally(() => {
+      setLoadingGroups(false);
+    });
+}, [
+  open,
+  hasCustomisation,
+  menuItemId,
+  restaurantId,
+]);
 
   function handleSelectionChange(groupId: string, value: string | string[]) {
     setSelections((prev) => ({ ...prev, [groupId]: value }));
